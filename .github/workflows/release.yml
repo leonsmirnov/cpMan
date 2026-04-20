@@ -1,10 +1,16 @@
 name: Release
 
-# Triggers when you push a version tag like v1.0.0
+# Triggers when you push a version tag like v1.0.0, or manually from GitHub UI
 on:
   push:
     tags:
       - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version label for the DMG (e.g. v1.0.0-test)"
+        required: true
+        default: "v0.0.0-manual"
 
 jobs:
   build-and-release:
@@ -48,6 +54,15 @@ jobs:
           echo "path=$APP" >> $GITHUB_OUTPUT
           echo "Found app at: $APP"
 
+      - name: Resolve version label
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "label=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "label=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          fi
+
       - name: Create DMG
         run: |
           mkdir -p dist
@@ -59,25 +74,26 @@ jobs:
             --icon "cpMan.app" 150 185 \
             --hide-extension "cpMan.app" \
             --app-drop-link 450 185 \
-            "dist/cpMan-${{ github.ref_name }}.dmg" \
+            "dist/cpMan-${{ steps.version.outputs.label }}.dmg" \
             "${{ steps.app_path.outputs.path }}"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: "cpMan ${{ github.ref_name }}"
+          tag_name: ${{ steps.version.outputs.label }}
+          name: "cpMan ${{ steps.version.outputs.label }}"
           body: |
-            ## cpMan ${{ github.ref_name }}
+            ## cpMan ${{ steps.version.outputs.label }}
 
             ### Install
-            1. Download `cpMan-${{ github.ref_name }}.dmg`
+            1. Download `cpMan-${{ steps.version.outputs.label }}.dmg`
             2. Open the DMG and drag **cpMan.app** to your Applications folder
             3. Launch cpMan and grant Accessibility access when prompted
 
             > **Note:** This build is ad-hoc signed (not notarized).
             > If macOS blocks the app, right-click → Open to bypass Gatekeeper.
-          files: dist/cpMan-${{ github.ref_name }}.dmg
+          files: dist/cpMan-${{ steps.version.outputs.label }}.dmg
           draft: false
-          prerelease: ${{ contains(github.ref_name, '-') }}
+          prerelease: ${{ contains(steps.version.outputs.label, '-') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
