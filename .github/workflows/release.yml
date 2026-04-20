@@ -1,0 +1,83 @@
+name: Release
+
+# Triggers when you push a version tag like v1.0.0
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  build-and-release:
+    name: Build DMG & Publish Release
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.app
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Install create-dmg
+        run: brew install create-dmg
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Resolve Swift packages
+        run: xcodebuild -resolvePackageDependencies -scheme cpMan
+
+      - name: Build Release
+        run: |
+          xcodebuild build \
+            -scheme cpMan \
+            -configuration Release \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=YES \
+            CODE_SIGNING_ALLOWED=YES \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES
+
+      - name: Locate built app
+        id: app_path
+        run: |
+          APP=$(find build/DerivedData -name "cpMan.app" -maxdepth 6 | head -1)
+          echo "path=$APP" >> $GITHUB_OUTPUT
+          echo "Found app at: $APP"
+
+      - name: Create DMG
+        run: |
+          mkdir -p dist
+          create-dmg \
+            --volname "cpMan" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 128 \
+            --icon "cpMan.app" 150 185 \
+            --hide-extension "cpMan.app" \
+            --app-drop-link 450 185 \
+            "dist/cpMan-${{ github.ref_name }}.dmg" \
+            "${{ steps.app_path.outputs.path }}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "cpMan ${{ github.ref_name }}"
+          body: |
+            ## cpMan ${{ github.ref_name }}
+
+            ### Install
+            1. Download `cpMan-${{ github.ref_name }}.dmg`
+            2. Open the DMG and drag **cpMan.app** to your Applications folder
+            3. Launch cpMan and grant Accessibility access when prompted
+
+            > **Note:** This build is ad-hoc signed (not notarized).
+            > If macOS blocks the app, right-click → Open to bypass Gatekeeper.
+          files: dist/cpMan-${{ github.ref_name }}.dmg
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
