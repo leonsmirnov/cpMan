@@ -1,10 +1,12 @@
 name: CI
 
+# Runs on integration branches + every PR targeting them + manual "Run workflow".
+# (Previously `branches: ["**"]` ran on every push to every branch — noisy and costly.)
 on:
   push:
-    branches: ["**"]
+    branches: [main, master, dev]
   pull_request:
-    branches: ["**"]
+    branches: [main, master, dev]
   workflow_dispatch:
 
 jobs:
