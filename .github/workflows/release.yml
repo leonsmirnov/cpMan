@@ -16,6 +16,8 @@ jobs:
   build-and-release:
     name: Build DMG & Publish Release
     runs-on: macos-15
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout
