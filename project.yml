@@ -1,0 +1,78 @@
+name: cpMan
+options:
+  bundleIdPrefix: com.cpman
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "16.0"
+  generateEmptyDirectories: true
+
+packages:
+  KeyboardShortcuts:
+    url: https://github.com/sindresorhus/KeyboardShortcuts
+    from: "2.0.0"
+
+targets:
+  cpMan:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/cpMan
+        excludes:
+          - Resources/**
+    resources:
+      - path: Sources/cpMan/Resources
+    postBuildScripts:
+      - name: "Install to ~/Applications (stable AX permission path)"
+        inputFiles:
+          - "$(BUILT_PRODUCTS_DIR)/$(FULL_PRODUCT_NAME)/Contents/MacOS/$(PRODUCT_NAME)"
+        script: |
+          if [ "$CONFIGURATION" != "Debug" ]; then
+            echo "ℹ️ Skipping install: configuration is $CONFIGURATION"
+            exit 0
+          fi
+          DEST="$HOME/Applications"
+          mkdir -p "$DEST"
+          APP="${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}"
+          rm -rf "$DEST/${FULL_PRODUCT_NAME}"
+          cp -R "$APP" "$DEST/"
+          # Remove quarantine so macOS launches it without Gatekeeper prompts.
+          # No need to re-sign — Xcode already signed with a stable developer certificate.
+          xattr -cr "$DEST/${FULL_PRODUCT_NAME}"
+          echo "✅ Installed ${FULL_PRODUCT_NAME} → $DEST"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.cpman.app
+        SWIFT_VERSION: "6.0"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        INFOPLIST_FILE: Sources/cpMan/Resources/Info.plist
+        ENABLE_HARDENED_RUNTIME: YES
+        GENERATE_INFOPLIST_FILE: NO
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks"
+      configs:
+        Debug:
+          CODE_SIGN_ENTITLEMENTS: Sources/cpMan/Resources/cpMan-dev.entitlements
+          SWIFT_OPTIMIZATION_LEVEL: "-Onone"
+          GCC_OPTIMIZATION_LEVEL: "0"
+          DEBUG_INFORMATION_FORMAT: dwarf
+        Release:
+          CODE_SIGN_ENTITLEMENTS: Sources/cpMan/Resources/cpMan-release.entitlements
+          SWIFT_OPTIMIZATION_LEVEL: "-O"
+          GCC_OPTIMIZATION_LEVEL: s
+          DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
+          SWIFT_COMPILATION_MODE: wholemodule
+    dependencies:
+      - package: KeyboardShortcuts
+
+  cpManTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources: Tests/cpManTests
+    settings:
+      base:
+        SWIFT_VERSION: "6.0"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/cpMan.app/Contents/MacOS/cpMan"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+    dependencies:
+      - target: cpMan
+        embed: false

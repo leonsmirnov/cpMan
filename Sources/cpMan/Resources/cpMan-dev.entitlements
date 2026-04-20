@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+        DEBUG / DEVELOPMENT entitlements
+        ═══════════════════════════════════════════════════════════════════════
+        App Sandbox is intentionally DISABLED for debug builds.
+
+        Why: every Xcode rebuild re-signs the binary with a fresh ad-hoc
+        signature. macOS ties Accessibility (AX) trust to the code signature,
+        so enabling the sandbox in dev builds causes AX to be re-evaluated on
+        every run — breaking auto-paste. Without the sandbox the signature is
+        stable enough across rebuilds when running from ~/Applications.
+
+        The Release configuration (cpMan-release.entitlements) enables the
+        sandbox as required by the Mac App Store.
+        ═══════════════════════════════════════════════════════════════════════
+    -->
+
+    <!-- Hardened Runtime — required for notarization; safe in both configs -->
+    <!-- Enforced via ENABLE_HARDENED_RUNTIME = YES in project.yml          -->
+</dict>
+</plist>

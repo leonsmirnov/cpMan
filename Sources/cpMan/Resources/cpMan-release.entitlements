@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+        RELEASE / APP STORE entitlements
+        ═══════════════════════════════════════════════════════════════════════
+        This file is used for the Release configuration (Archive → App Store).
+        Never use this for day-to-day development — use cpMan-dev.entitlements.
+
+        Sandbox notes for cpMan:
+        • NSPasteboard access    — allowed in sandbox by default
+        • CGEvent.post / postToPid — allowed with Accessibility permission
+        • Application Support storage (images) — in the app's own container
+        • Vision / OCR           — no special entitlement needed
+        • AXIsProcessTrusted     — no special entitlement needed
+        ═══════════════════════════════════════════════════════════════════════
+    -->
+
+    <!-- Required for Mac App Store distribution -->
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+
+    <!--
+        Hardened Runtime — required for notarization and App Store.
+        Enforced via ENABLE_HARDENED_RUNTIME = YES in project.yml.
+    -->
+
+    <!--
+        Uncomment if you add iCloud sync or auto-update checks in the future:
+        <key>com.apple.security.network.client</key>
+        <true/>
+    -->
+</dict>
+</plist>
