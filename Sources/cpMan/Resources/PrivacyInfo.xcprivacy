@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+    Privacy Manifest — required for all Mac App Store submissions since May 2024.
+    Declares which privacy-sensitive APIs cpMan uses and why.
+    See: https://developer.apple.com/documentation/bundleresources/privacy_manifest_files
+-->
+<dict>
+    <!-- cpMan does NOT track users or share data with third parties. -->
+    <key>NSPrivacyTracking</key>
+    <false/>
+
+    <key>NSPrivacyTrackingDomains</key>
+    <array/>
+
+    <!-- cpMan does NOT collect any user data (all clipboard data stays on device). -->
+    <key>NSPrivacyCollectedDataTypes</key>
+    <array/>
+
+    <!-- APIs that access privacy-sensitive system information. -->
+    <key>NSPrivacyAccessedAPITypes</key>
+    <array>
+        <!--
+            UserDefaults — used to persist all user preferences (AppSettings).
+            Reason CA92.1: "Declare this reason to access the UserDefaults APIs
+            to read and/or write information that is only accessible to your app."
+        -->
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>CA92.1</string>
+            </array>
+        </dict>
+
+        <!--
+            File timestamps — used when writing captured images to disk and
+            when calculating age-based history pruning cutoffs.
+            Reason C617.1: "Declare this reason to access the APIs to manage
+            timestamps for files that are accessible to your app."
+        -->
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>C617.1</string>
+            </array>
+        </dict>
+    </array>
+</dict>
+</plist>
