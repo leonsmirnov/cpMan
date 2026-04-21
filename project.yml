@@ -73,6 +73,17 @@ targets:
         MACOSX_DEPLOYMENT_TARGET: "14.0"
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/cpMan.app/Contents/MacOS/cpMan"
         BUNDLE_LOADER: "$(TEST_HOST)"
+        GENERATE_INFOPLIST_FILE: YES
     dependencies:
       - target: cpMan
         embed: false
+
+schemes:
+  cpMan:
+    build:
+      targets:
+        cpMan: all
+        cpManTests: [test]
+    test:
+      targets:
+        - cpManTests

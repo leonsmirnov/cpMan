@@ -12,7 +12,7 @@ A fast, lightweight clipboard manager that lives in your menu bar. cpMan keeps a
 
 ## Features
 
-- **Clipboard history** — automatically captures text and images as you copy
+- **Clipboard history** — automatically captures text and images as you copy; the picker list updates live while it is open (no need to close and reopen)
 - **Instant search** — type to filter history in real time
 - **Auto-paste** — select an item and it pastes directly into whatever app you were using
 - **Paste as plain text** — strips formatting; press ⌥Return or right-click any text item
@@ -87,6 +87,8 @@ Press the global hotkey (default **`⌃⌥V`**) from any app. The clipboard hist
 | **1 – 9** | Instantly paste item at that position |
 | **Escape** | Close picker without pasting |
 | **Type anything** | Filter history by text |
+
+While the picker is open, new copies still appear in the list within about half a second. Your keyboard selection stays on the same row (same item) when possible, so the highlight does not jump to the top every time something new is captured.
 
 ### Right-click menu
 

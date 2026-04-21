@@ -50,7 +50,7 @@ final class ImageProcessor {
             }
         }
 
-        let hash = sha256(data)
+        let hash = Self.sha256(data)
         guard let fileURL = writeToDisk(data: data) else {
             logger.error("Failed to write image to disk")
             return nil
@@ -116,8 +116,8 @@ final class ImageProcessor {
         return rep.representation(using: .png, properties: [:])
     }
 
-    // SHA256 byte sequence is guaranteed non-nil — map, not compactMap
-    internal func sha256(_ data: Data) -> String {
+    /// Pure crypto — safe to call from any isolation (used by tests without MainActor).
+    nonisolated static func sha256(_ data: Data) -> String {
         SHA256.hash(data: data)
             .map { String(format: "%02x", $0) }
             .joined()

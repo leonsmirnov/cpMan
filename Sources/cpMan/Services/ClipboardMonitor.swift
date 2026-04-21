@@ -41,20 +41,21 @@ final class ClipboardMonitor {
         guard pasteboard.changeCount != lastChangeCount else { return }
         lastChangeCount = pasteboard.changeCount
 
-        if AccessibilityService.shared.isSecureInputActive {
-            logger.debug("Skipped clipboard read: Secure Event Input is active")
-            return
-        }
-
-        if AppSettings.shared.isPrivateModeEnabled {
-            logger.debug("Skipped clipboard read: Private Mode is active")
-            return
-        }
-
         let frontApp = NSWorkspace.shared.frontmostApplication
-        if let bundleId = frontApp?.bundleIdentifier,
-           IgnoreListService.shared.isIgnored(bundleId: bundleId) {
-            logger.debug("Skipped clipboard read: \(bundleId) is in ignore list")
+        let frontBundle = frontApp?.bundleIdentifier
+        if !Self.shouldRecordClipboard(
+            secureInputActive: AccessibilityService.shared.isSecureInputActive,
+            privateModeEnabled: AppSettings.shared.isPrivateModeEnabled,
+            frontmostBundleId: frontBundle,
+            ignoredBundleIds: AppSettings.shared.ignoredBundleIds
+        ) {
+            if AccessibilityService.shared.isSecureInputActive {
+                logger.debug("Skipped clipboard read: Secure Event Input is active")
+            } else if AppSettings.shared.isPrivateModeEnabled {
+                logger.debug("Skipped clipboard read: Private Mode is active")
+            } else if let bundleId = frontBundle, IgnoreListService.shared.isIgnored(bundleId: bundleId) {
+                logger.debug("Skipped clipboard read: \(bundleId) is in ignore list")
+            }
             return
         }
 
@@ -63,7 +64,7 @@ final class ClipboardMonitor {
             return
         }
 
-        if isDuplicate(item) {
+        if Self.isDuplicateIncoming(item, latest: HistoryStore.shared.latestItem()) {
             logger.debug("Skipped duplicate clipboard item")
             return
         }
@@ -94,8 +95,7 @@ final class ClipboardMonitor {
         // stored reference useless. Pasting a raw file:// URL also produces the
         // broken "generic file" icon seen in many apps.
         let types = pasteboard.types ?? []
-        if types.contains(.fileURL) ||
-           types.contains(NSPasteboard.PasteboardType("NSFilenamesPboardType")) {
+        if Self.shouldSkipForFileReferencePasteboardTypes(Array(types)) {
             logger.debug("Skipped file reference on pasteboard (Finder copy)")
             return nil
         }
@@ -122,9 +122,30 @@ final class ClipboardMonitor {
         return nil
     }
 
-    // P2: O(1) fetch of the single most recent item for deduplication.
-    private func isDuplicate(_ incoming: ClipboardItem) -> Bool {
-        guard let latest = HistoryStore.shared.latestItem() else { return false }
+    // MARK: - Predicates (shared with unit tests)
+
+    /// Finder / file copies — storing these as text produces broken history rows.
+    nonisolated static func shouldSkipForFileReferencePasteboardTypes(_ types: [NSPasteboard.PasteboardType]) -> Bool {
+        types.contains(.fileURL) ||
+            types.contains(NSPasteboard.PasteboardType("NSFilenamesPboardType"))
+    }
+
+    /// Mirrors the guards in `checkPasteboard` before reading pasteboard contents.
+    nonisolated static func shouldRecordClipboard(
+        secureInputActive: Bool,
+        privateModeEnabled: Bool,
+        frontmostBundleId: String?,
+        ignoredBundleIds: [String]
+    ) -> Bool {
+        if secureInputActive { return false }
+        if privateModeEnabled { return false }
+        if let bid = frontmostBundleId, ignoredBundleIds.contains(bid) { return false }
+        return true
+    }
+
+    /// Same dedupe rule as production before `HistoryStore.insert`.
+    nonisolated static func isDuplicateIncoming(_ incoming: ClipboardItem, latest: ClipboardItem?) -> Bool {
+        guard let latest else { return false }
         switch incoming.contentType {
         case .text:
             return incoming.textValue == latest.textValue

@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 @testable import cpMan
 
@@ -40,25 +41,21 @@ final class UserDefaultsIntOrDefaultTests: XCTestCase {
 
 // MARK: - ImageProcessor hashing
 
-@MainActor
 final class ImageProcessorHashTests: XCTestCase {
     func testSha256IsDeterministic() {
-        let processor = ImageProcessor.shared
         let data = Data("hello clipboard".utf8)
-        XCTAssertEqual(processor.sha256(data), processor.sha256(data))
+        XCTAssertEqual(ImageProcessor.sha256(data), ImageProcessor.sha256(data))
     }
 
     func testSha256ProducesHexString() {
-        let processor = ImageProcessor.shared
-        let hash = processor.sha256(Data("test".utf8))
+        let hash = ImageProcessor.sha256(Data("test".utf8))
         XCTAssertEqual(hash.count, 64, "SHA-256 hex should be 64 characters")
         XCTAssert(hash.allSatisfy { $0.isHexDigit }, "Hash must be valid hex")
     }
 
     func testDifferentDataProducesDifferentHash() {
-        let processor = ImageProcessor.shared
-        let h1 = processor.sha256(Data("aaa".utf8))
-        let h2 = processor.sha256(Data("bbb".utf8))
+        let h1 = ImageProcessor.sha256(Data("aaa".utf8))
+        let h2 = ImageProcessor.sha256(Data("bbb".utf8))
         XCTAssertNotEqual(h1, h2)
     }
 }
@@ -80,6 +77,8 @@ final class ClipboardItemModelTests: XCTestCase {
     func testImageItemCreation() {
         let item = ClipboardItem(
             contentType: .image,
+            textValue: nil,
+            ocrText: nil,
             imageFilePath: "/tmp/test.png",
             imageWidth: 1920,
             imageHeight: 1080,
@@ -186,6 +185,8 @@ final class HistoryStorePruningTests: XCTestCase {
         // Image item that exceeds 1 MB
         let bigImageItem = ClipboardItem(
             contentType: .image,
+            textValue: nil,
+            ocrText: nil,
             imageFilePath: "/nonexistent.png",
             imageSizeBytes: 2 * 1_048_576  // 2 MB
         )
@@ -227,6 +228,8 @@ final class HistoryStorePruningTests: XCTestCase {
         store.insert(ClipboardItem(contentType: .text, textValue: "text item"))
         store.insert(ClipboardItem(
             contentType: .image,
+            textValue: nil,
+            ocrText: nil,
             imageFilePath: "/nonexistent/image.png",
             imageSizeBytes: 1024
         ))
@@ -297,30 +300,38 @@ final class PrivateModeTests: XCTestCase {
         XCTAssertFalse(AppSettings.shared.isPrivateModeEnabled)
     }
 
-    func testPrivateModeBlocksInsertion() {
-        // When private mode is ON the monitor skips captures.
-        // We test the AppSettings flag directly; ClipboardMonitor reads it before inserting.
-        let store = HistoryStore.makeForTesting()
-        AppSettings.shared.isPrivateModeEnabled = true
-
-        // Simulate what ClipboardMonitor does: bail early if private mode is on
-        if !AppSettings.shared.isPrivateModeEnabled {
-            store.insert(ClipboardItem(contentType: .text, textValue: "secret"))
-        }
-
-        XCTAssertEqual(store.allItems().count, 0,
-                       "Private mode must prevent items from being inserted")
+    func testPrivateModeBlocksRecordingPredicateMatchesMonitor() {
+        XCTAssertFalse(
+            ClipboardMonitor.shouldRecordClipboard(
+                secureInputActive: false,
+                privateModeEnabled: true,
+                frontmostBundleId: "com.apple.Safari",
+                ignoredBundleIds: []
+            ),
+            "Private mode ON must use the same guard as ClipboardMonitor.checkPasteboard"
+        )
     }
 
-    func testDisablingPrivateModeAllowsInsertion() {
-        let store = HistoryStore.makeForTesting()
-        AppSettings.shared.isPrivateModeEnabled = false
+    func testPrivateModeOffAllowsRecordingPredicate() {
+        XCTAssertTrue(
+            ClipboardMonitor.shouldRecordClipboard(
+                secureInputActive: false,
+                privateModeEnabled: false,
+                frontmostBundleId: "com.apple.Safari",
+                ignoredBundleIds: []
+            )
+        )
+    }
 
-        if !AppSettings.shared.isPrivateModeEnabled {
-            store.insert(ClipboardItem(contentType: .text, textValue: "visible"))
-        }
-
-        XCTAssertEqual(store.allItems().count, 1)
+    func testSecureInputBlocksRecordingPredicate() {
+        XCTAssertFalse(
+            ClipboardMonitor.shouldRecordClipboard(
+                secureInputActive: true,
+                privateModeEnabled: false,
+                frontmostBundleId: "com.apple.Safari",
+                ignoredBundleIds: []
+            )
+        )
     }
 }
 
@@ -400,6 +411,8 @@ final class PasteAsPlainTextTests: XCTestCase {
         // pasteAsPlainText on an image with no OCR text should be a no-op
         let item = ClipboardItem(
             contentType: .image,
+            textValue: nil,
+            ocrText: nil,
             imageFilePath: "/tmp/test.png"
         )
         // ocrText is nil → pasteAsPlainText returns early (nothing to paste)
@@ -409,6 +422,7 @@ final class PasteAsPlainTextTests: XCTestCase {
     func testImageItemWithOCRHasPlainText() {
         let item = ClipboardItem(
             contentType: .image,
+            textValue: nil,
             ocrText: "extracted text from image",
             imageFilePath: "/tmp/test.png"
         )
@@ -459,6 +473,344 @@ final class EditHistoryItemTests: XCTestCase {
         let edited = ClipboardItem(contentType: .text, textValue: "edited")
         XCTAssertGreaterThan(edited.createdAt, original.createdAt,
                              "Edited item must have a more recent timestamp")
+    }
+}
+
+// MARK: - PickerListSync (live history while picker is open)
+
+@MainActor
+final class PickerListSyncTests: XCTestCase {
+    /// When a newer copy lands at the top, selection must stay on the same item id (no jump to row 1).
+    func testNewInsertAtTopKeepsSelectionOnSameItem() async {
+        let store = HistoryStore.makeForTesting()
+        let t100 = Date(timeIntervalSince1970: 100)
+        let t200 = Date(timeIntervalSince1970: 200)
+        let t300 = Date(timeIntervalSince1970: 300)
+
+        let a = ClipboardItem(createdAt: t100, contentType: .text, textValue: "a")
+        let b = ClipboardItem(createdAt: t200, contentType: .text, textValue: "b")
+        store.insert(a)
+        store.insert(b)
+        XCTAssertEqual(store.allItems().map(\.textValue), ["b", "a"])
+
+        let c = ClipboardItem(createdAt: t300, contentType: .text, textValue: "c")
+        store.insert(c)
+
+        let (items, selectedID, _) = PickerListSync.snapshot(
+            store: store,
+            matching: "",
+            previousSelection: a.id,
+            expandedID: nil
+        )
+        XCTAssertEqual(items.map(\.textValue), ["c", "b", "a"])
+        XCTAssertEqual(selectedID, a.id, "Highlight must remain on the previously selected row")
+    }
+
+    func testSelectionResetsToFirstWhenPreviousRowRemoved() async {
+        let store = HistoryStore.makeForTesting()
+        let gone = UUID()
+        let keep = ClipboardItem(contentType: .text, textValue: "only")
+        store.insert(keep)
+
+        let (items, selectedID, _) = PickerListSync.snapshot(
+            store: store,
+            matching: "",
+            previousSelection: gone,
+            expandedID: nil
+        )
+        XCTAssertEqual(items.count, 1)
+        XCTAssertEqual(selectedID, keep.id)
+    }
+
+    func testExpandedRowClearedWhenItemNoLongerInList() async {
+        let store = HistoryStore.makeForTesting()
+        let a = ClipboardItem(contentType: .text, textValue: "a")
+        let b = ClipboardItem(contentType: .text, textValue: "b")
+        store.insert(a)
+        store.insert(b)
+
+        let (_, _, expanded) = PickerListSync.snapshot(
+            store: store,
+            matching: "",
+            previousSelection: b.id,
+            expandedID: a.id
+        )
+        XCTAssertEqual(expanded, a.id)
+
+        store.delete(a)
+        let (_, _, expandedAfter) = PickerListSync.snapshot(
+            store: store,
+            matching: "",
+            previousSelection: b.id,
+            expandedID: a.id
+        )
+        XCTAssertNil(expandedAfter, "Expanded row must clear when that item was deleted")
+    }
+
+    func testSearchQueryReflectedInSnapshot() async {
+        let store = HistoryStore.makeForTesting()
+        store.insert(ClipboardItem(contentType: .text, textValue: "alpha"))
+        store.insert(ClipboardItem(contentType: .text, textValue: "beta"))
+
+        let (items, _, _) = PickerListSync.snapshot(
+            store: store,
+            matching: "alp",
+            previousSelection: nil,
+            expandedID: nil
+        )
+        XCTAssertEqual(items.count, 1)
+        XCTAssertEqual(items.first?.textValue, "alpha")
+    }
+}
+
+// MARK: - ClipboardMonitor predicates
+
+final class ClipboardMonitorPredicateTests: XCTestCase {
+    func testSkipsFinderFileURLPasteboardType() {
+        XCTAssertTrue(
+            ClipboardMonitor.shouldSkipForFileReferencePasteboardTypes([.fileURL])
+        )
+    }
+
+    func testSkipsFinderFilenamesPasteboardType() {
+        XCTAssertTrue(
+            ClipboardMonitor.shouldSkipForFileReferencePasteboardTypes([
+                NSPasteboard.PasteboardType("NSFilenamesPboardType"),
+            ])
+        )
+    }
+
+    func testDoesNotSkipPlainStringTypes() {
+        XCTAssertFalse(
+            ClipboardMonitor.shouldSkipForFileReferencePasteboardTypes([.string])
+        )
+    }
+
+    func testTextDuplicateWhenSameStringAsLatest() {
+        let latest = ClipboardItem(contentType: .text, textValue: "hello")
+        let incoming = ClipboardItem(contentType: .text, textValue: "hello")
+        XCTAssertTrue(ClipboardMonitor.isDuplicateIncoming(incoming, latest: latest))
+    }
+
+    func testTextNotDuplicateWhenDifferentString() {
+        let latest = ClipboardItem(contentType: .text, textValue: "hello")
+        let incoming = ClipboardItem(contentType: .text, textValue: "world")
+        XCTAssertFalse(ClipboardMonitor.isDuplicateIncoming(incoming, latest: latest))
+    }
+
+    func testImageDuplicateWhenSameHash() {
+        let latest = ClipboardItem(
+            contentType: .image,
+            textValue: nil,
+            ocrText: nil,
+            imageFilePath: "/a.png",
+            imageHash: "deadbeef"
+        )
+        let incoming = ClipboardItem(
+            contentType: .image,
+            textValue: nil,
+            ocrText: nil,
+            imageFilePath: "/b.png",
+            imageHash: "deadbeef"
+        )
+        XCTAssertTrue(ClipboardMonitor.isDuplicateIncoming(incoming, latest: latest))
+    }
+
+    func testImageNotDuplicateWhenEitherHashMissing() {
+        let latest = ClipboardItem(
+            contentType: .image,
+            textValue: nil,
+            ocrText: nil,
+            imageFilePath: "/a.png",
+            imageHash: nil
+        )
+        let incoming = ClipboardItem(
+            contentType: .image,
+            textValue: nil,
+            ocrText: nil,
+            imageFilePath: "/b.png",
+            imageHash: "abc"
+        )
+        XCTAssertFalse(ClipboardMonitor.isDuplicateIncoming(incoming, latest: latest))
+    }
+
+    func testNoLatestMeansNotDuplicate() {
+        let incoming = ClipboardItem(contentType: .text, textValue: "x")
+        XCTAssertFalse(ClipboardMonitor.isDuplicateIncoming(incoming, latest: nil))
+    }
+}
+
+// MARK: - Ignore list
+
+@MainActor
+final class IgnoreListServiceTests: XCTestCase {
+    private var originalIds: [String] = []
+
+    override func setUp() async throws {
+        try await super.setUp()
+        originalIds = AppSettings.shared.ignoredBundleIds
+        AppSettings.shared.ignoredBundleIds = []
+    }
+
+    override func tearDown() async throws {
+        AppSettings.shared.ignoredBundleIds = originalIds
+        try await super.tearDown()
+    }
+
+    func testAddRemoveRoundTrip() {
+        XCTAssertFalse(IgnoreListService.shared.isIgnored(bundleId: "com.example.secret"))
+        IgnoreListService.shared.add(bundleId: "com.example.secret")
+        XCTAssertTrue(IgnoreListService.shared.isIgnored(bundleId: "com.example.secret"))
+        IgnoreListService.shared.remove(bundleId: "com.example.secret")
+        XCTAssertFalse(IgnoreListService.shared.isIgnored(bundleId: "com.example.secret"))
+    }
+
+    func testAddDuplicateBundleIdIsIdempotent() {
+        IgnoreListService.shared.add(bundleId: "com.example.once")
+        IgnoreListService.shared.add(bundleId: "com.example.once")
+        XCTAssertEqual(
+            AppSettings.shared.ignoredBundleIds.filter { $0 == "com.example.once" }.count,
+            1
+        )
+    }
+
+    func testIgnoredFrontmostMatchesMonitorPredicate() {
+        XCTAssertFalse(
+            ClipboardMonitor.shouldRecordClipboard(
+                secureInputActive: false,
+                privateModeEnabled: false,
+                frontmostBundleId: "com.blocked.app",
+                ignoredBundleIds: ["com.blocked.app", "com.other"]
+            )
+        )
+    }
+}
+
+// MARK: - PrivateModeService
+
+@MainActor
+final class PrivateModeServiceTests: XCTestCase {
+    private var wasPrivate = false
+    private var lastMinutes = 0
+
+    override func setUp() async throws {
+        try await super.setUp()
+        wasPrivate = AppSettings.shared.isPrivateModeEnabled
+        lastMinutes = AppSettings.shared.lastPrivateModeDurationMinutes
+        PrivateModeService.shared.disable()
+    }
+
+    override func tearDown() async throws {
+        PrivateModeService.shared.disable()
+        AppSettings.shared.lastPrivateModeDurationMinutes = lastMinutes
+        AppSettings.shared.isPrivateModeEnabled = wasPrivate
+        try await super.tearDown()
+    }
+
+    func testEnableIndefiniteSetsFlagAndZeroMinutes() {
+        PrivateModeService.shared.enable(minutes: 0)
+        XCTAssertTrue(AppSettings.shared.isPrivateModeEnabled)
+        XCTAssertEqual(AppSettings.shared.lastPrivateModeDurationMinutes, 0)
+    }
+
+    func testEnableTimedPersistsLastDuration() {
+        PrivateModeService.shared.enable(minutes: 60)
+        XCTAssertTrue(AppSettings.shared.isPrivateModeEnabled)
+        XCTAssertEqual(AppSettings.shared.lastPrivateModeDurationMinutes, 60)
+    }
+
+    func testDisableClearsPrivateMode() {
+        PrivateModeService.shared.enable(minutes: 15)
+        PrivateModeService.shared.disable()
+        XCTAssertFalse(AppSettings.shared.isPrivateModeEnabled)
+    }
+
+    func testDurationsMenuHasExpectedPresets() {
+        XCTAssertEqual(PrivateModeService.durations.map(\.id), [15, 30, 60, 120, 0])
+    }
+}
+
+// MARK: - HistoryStore MRU, pin, OCR search
+
+@MainActor
+final class HistoryStoreAdvancedTests: XCTestCase {
+    func testTouchMovesItemToTop() async {
+        let store = HistoryStore.makeForTesting()
+        let older = ClipboardItem(
+            createdAt: Date(timeIntervalSince1970: 100),
+            contentType: .text,
+            textValue: "older"
+        )
+        let newer = ClipboardItem(
+            createdAt: Date(timeIntervalSince1970: 200),
+            contentType: .text,
+            textValue: "newer"
+        )
+        store.insert(older)
+        store.insert(newer)
+        XCTAssertEqual(store.allItems().first?.textValue, "newer")
+
+        store.touch(older)
+        XCTAssertEqual(store.allItems().first?.textValue, "older")
+    }
+
+    func testTogglePinFlipsFlag() async {
+        let store = HistoryStore.makeForTesting()
+        let item = ClipboardItem(contentType: .text, textValue: "pin me")
+        store.insert(item)
+        XCTAssertFalse(item.isPinned)
+        store.togglePin(item)
+        XCTAssertTrue(item.isPinned)
+        store.togglePin(item)
+        XCTAssertFalse(item.isPinned)
+    }
+
+    func testPinnedItemNotCountedTowardUnpinnedCountLimit() async {
+        let store = HistoryStore.makeForTesting()
+        let settings = AppSettings.shared
+        let originalLimit = settings.historyCountLimit
+        settings.historyCountLimit = 1
+        defer { settings.historyCountLimit = originalLimit }
+
+        let pinned = ClipboardItem(
+            createdAt: Date(timeIntervalSince1970: 1),
+            contentType: .text,
+            textValue: "pinned",
+            isPinned: true
+        )
+        store.insert(pinned)
+        store.insert(ClipboardItem(
+            createdAt: Date(timeIntervalSince1970: 2),
+            contentType: .text,
+            textValue: "u1"
+        ))
+        store.insert(ClipboardItem(
+            createdAt: Date(timeIntervalSince1970: 3),
+            contentType: .text,
+            textValue: "u2"
+        ))
+
+        let all = store.allItems()
+        XCTAssertTrue(all.contains { $0.textValue == "pinned" }, "Pinned row must survive pruning")
+        XCTAssertTrue(all.contains { $0.textValue == "u2" }, "Newest unpinned row must survive")
+        XCTAssertFalse(all.contains { $0.textValue == "u1" }, "Older unpinned row must be pruned")
+    }
+
+    func testSearchMatchesOCRTextOnImageItems() async {
+        let store = HistoryStore.makeForTesting()
+        let img = ClipboardItem(
+            contentType: .image,
+            textValue: nil,
+            ocrText: nil,
+            imageFilePath: "/tmp/cpman-test.png"
+        )
+        store.insert(img)
+        XCTAssertTrue(store.allItems(matching: "INV-999").isEmpty)
+
+        store.updateOCR(forId: img.id, text: "Invoice INV-999 total")
+        let hits = store.allItems(matching: "inv-999")
+        XCTAssertEqual(hits.count, 1)
+        XCTAssertEqual(hits.first?.id, img.id)
     }
 }
 

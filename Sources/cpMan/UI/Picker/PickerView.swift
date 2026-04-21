@@ -25,10 +25,10 @@ struct PickerView: View {
     @State private var debouncedQuery = ""
     @State private var debounceTask:  Task<Void, Never>?
 
-    /// Frozen snapshot of the history list for the current picker session.
-    /// Only refreshes when the picker opens or the search query changes.
-    /// Isolating this from live store updates prevents the list from jumping
-    /// mid-navigation when the clipboard monitor captures a new item.
+    /// Snapshot of the history list for the current picker session.
+    /// Refreshes when the picker opens, the search query changes, or the store
+    /// changes (new copies while the picker is visible). Selection is kept on
+    /// the same item by id when possible so the list does not jump under the user.
     @State private var displayedItems: [ClipboardItem] = []
 
     /// Identity-based selection. UUID never goes stale when the list reorders,
@@ -77,6 +77,9 @@ struct PickerView: View {
         // onAppear fires on first show; refreshPublisher fires on every subsequent show.
         .onAppear { reload() }
         .onReceive(refreshPublisher ?? Empty().eraseToAnyPublisher()) { _ in reload() }
+        .onReceive(store.objectWillChange) { _ in
+            syncDisplayedItemsFromStore()
+        }
         .onDisappear {
             debounceTask?.cancel()
         }
@@ -310,6 +313,19 @@ struct PickerView: View {
         }
     }
 
+    /// Re-fetch from the store while keeping the current selection when it still exists.
+    private func syncDisplayedItemsFromStore() {
+        let snap = PickerListSync.snapshot(
+            store: store,
+            matching: debouncedQuery,
+            previousSelection: selectedID,
+            expandedID: expandedID
+        )
+        displayedItems = snap.items
+        selectedID     = snap.selectedID
+        expandedID     = snap.expandedID
+    }
+
     private func moveSelection(_ delta: Int) {
         guard !displayedItems.isEmpty else { return }
         let currentIndex = displayedItems.firstIndex(where: { $0.id == selectedID }) ?? 0
@@ -372,6 +388,37 @@ struct PickerView: View {
         let index = n - 1
         guard displayedItems.indices.contains(index) else { return }
         onSelect(displayedItems[index])
+    }
+}
+
+// MARK: - Picker list sync (also unit-tested)
+
+/// Refreshes displayed rows when `HistoryStore` changes while the picker is open.
+enum PickerListSync {
+    @MainActor
+    static func snapshot(
+        store: HistoryStore,
+        matching query: String,
+        previousSelection: UUID?,
+        expandedID: UUID?
+    ) -> (items: [ClipboardItem], selectedID: UUID?, expandedID: UUID?) {
+        let fresh = store.allItems(matching: query)
+
+        let selectedID: UUID?
+        if let id = previousSelection, fresh.contains(where: { $0.id == id }) {
+            selectedID = id
+        } else {
+            selectedID = fresh.first?.id
+        }
+
+        let newExpanded: UUID?
+        if let e = expandedID, fresh.contains(where: { $0.id == e }) {
+            newExpanded = e
+        } else {
+            newExpanded = nil
+        }
+
+        return (fresh, selectedID, newExpanded)
     }
 }
 
