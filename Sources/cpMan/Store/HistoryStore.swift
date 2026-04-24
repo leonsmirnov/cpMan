@@ -46,28 +46,28 @@ final class HistoryStore: ObservableObject {
     }
 
     func delete(_ item: ClipboardItem) {
-        if let path = item.imageFilePath {
-            try? FileManager.default.removeItem(atPath: path)
-            ThumbnailCache.shared.evict(for: path)
-        }
-        container.mainContext.delete(item)
+        removeItem(item)
         save()
         objectWillChange.send()
     }
 
     /// Deletes every item in history and removes all stored image files.
     func deleteAll() {
-        let all = allItems(fetchLimit: Int.max)
-        for item in all {
-            if let path = item.imageFilePath {
-                try? FileManager.default.removeItem(atPath: path)
-                ThumbnailCache.shared.evict(for: path)
-            }
-            container.mainContext.delete(item)
-        }
+        // 1. Delete all images by wiping the directory
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let dir = support.appendingPathComponent("cpMan/Images", isDirectory: true)
+        try? FileManager.default.removeItem(at: dir)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        
+        // 2. Clear all thumbnails from memory
+        ThumbnailCache.shared.removeAll()
+        
+        // 3. Batch delete all SwiftData rows (O(1) memory)
+        try? container.mainContext.delete(model: ClipboardItem.self)
+        
         save()
         objectWillChange.send()
-        logger.info("Deleted all \(all.count) history items")
+        logger.info("Deleted all history items")
     }
 
     func updateOCR(forId id: UUID, text: String) {
@@ -98,25 +98,25 @@ final class HistoryStore: ObservableObject {
 
     // MARK: - Read
 
-    /// Returns items sorted by most recent, with an optional fetch cap and in-memory search.
-    /// fetchLimit caps the DB query; query filters the result set in memory.
+    /// Returns items sorted by most recent, with an optional fetch cap.
+    /// Search filtering is pushed to SwiftData for O(1) memory and full-table scope.
     func allItems(matching query: String = "", fetchLimit: Int = 500) -> [ClipboardItem] {
-        var descriptor = FetchDescriptor<ClipboardItem>(
-            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
-        )
-        // Cap rows returned from DB so the picker never loads unbounded history.
-        // Pinned items are always included via a second cheap fetch if they fall
-        // outside the limit — acceptable for typical pinned counts (<20).
-        descriptor.fetchLimit = fetchLimit
-
-        let items = (try? container.mainContext.fetch(descriptor)) ?? []
-        guard !query.isEmpty else { return items }
-
-        let q = query.lowercased()
-        return items.filter {
-            $0.textValue?.lowercased().contains(q) == true ||
-            $0.ocrText?.lowercased().contains(q) == true
+        var descriptor: FetchDescriptor<ClipboardItem>
+        if query.isEmpty {
+            descriptor = FetchDescriptor<ClipboardItem>(
+                sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+            )
+        } else {
+            descriptor = FetchDescriptor<ClipboardItem>(
+                predicate: #Predicate<ClipboardItem> {
+                    ($0.textValue?.localizedStandardContains(query) ?? false) ||
+                    ($0.ocrText?.localizedStandardContains(query) ?? false)
+                },
+                sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+            )
         }
+        descriptor.fetchLimit = fetchLimit
+        return (try? container.mainContext.fetch(descriptor)) ?? []
     }
 
     /// P2: O(1) fetch of the single most recent item for deduplication.
@@ -128,21 +128,37 @@ final class HistoryStore: ObservableObject {
         return try? container.mainContext.fetch(descriptor).first
     }
 
+    /// O(1) count of all items.
+    func totalCount() -> Int {
+        (try? container.mainContext.fetchCount(FetchDescriptor<ClipboardItem>())) ?? 0
+    }
+
     // MARK: - Pruning
 
     private func pruneIfNeeded() {
         let settings = AppSettings.shared
+        var didPrune = false
 
         // ── Count limit ──────────────────────────────────────────────────────
         let countLimit = settings.historyCountLimit
         if countLimit > 0 {
-            let descriptor = FetchDescriptor<ClipboardItem>(
-                predicate: #Predicate<ClipboardItem> { !$0.isPinned },
-                sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+            let countDescriptor = FetchDescriptor<ClipboardItem>(
+                predicate: #Predicate<ClipboardItem> { !$0.isPinned }
             )
-            if let items = try? container.mainContext.fetch(descriptor),
-               items.count > countLimit {
-                items.dropFirst(countLimit).forEach { delete($0) }
+            let unpinnedCount = (try? container.mainContext.fetchCount(countDescriptor)) ?? 0
+            let buffer = min(100, countLimit / 10)
+            
+            if unpinnedCount > countLimit + buffer {
+                let excessCount = unpinnedCount - countLimit
+                var descriptor = FetchDescriptor<ClipboardItem>(
+                    predicate: #Predicate<ClipboardItem> { !$0.isPinned },
+                    sortBy: [SortDescriptor(\.createdAt, order: .forward)] // oldest first
+                )
+                descriptor.fetchLimit = excessCount
+                if let excess = try? container.mainContext.fetch(descriptor) {
+                    excess.forEach { removeItem($0) }
+                    didPrune = true
+                }
             }
         }
 
@@ -152,11 +168,14 @@ final class HistoryStore: ObservableObject {
             let descriptor = FetchDescriptor<ClipboardItem>(
                 predicate: #Predicate<ClipboardItem> { !$0.isPinned && $0.createdAt < cutoff }
             )
-            (try? container.mainContext.fetch(descriptor))?.forEach { delete($0) }
+            if let expired = try? container.mainContext.fetch(descriptor), !expired.isEmpty {
+                expired.forEach { removeItem($0) }
+                didPrune = true
+            }
         }
 
         // ── Size limit (images only) ─────────────────────────────────────────
-        // C1 FIX: only fetch and delete IMAGE items — text rows must never be
+        // Only fetch and delete IMAGE items — text rows must never be
         // deleted to satisfy an image byte budget.
         if settings.historySizeLimitEnabled, settings.historySizeLimitMB > 0 {
             let maxBytes = settings.historySizeLimitMB * 1_048_576
@@ -168,9 +187,31 @@ final class HistoryStore: ObservableObject {
             var totalBytes = imageItems.compactMap(\.imageSizeBytes).reduce(0, +)
             for item in imageItems.reversed() where totalBytes > maxBytes {
                 totalBytes -= item.imageSizeBytes ?? 0
-                delete(item)
+                removeItem(item)
+                didPrune = true
             }
         }
+
+        // Single save + notification for the entire prune pass.
+        if didPrune {
+            save()
+            objectWillChange.send()
+        }
+    }
+
+    // MARK: - Private: item removal without save/notify
+
+    /// Removes an item from the context and cleans up its image file, but does
+    /// NOT call save() or objectWillChange.send(). Use this inside batch
+    /// operations (pruning, deleteAll) to avoid redundant disk writes and UI
+    /// refreshes. Callers are responsible for calling save() + objectWillChange
+    /// once after all removals are complete.
+    private func removeItem(_ item: ClipboardItem) {
+        if let path = item.imageFilePath {
+            try? FileManager.default.removeItem(atPath: path)
+            ThumbnailCache.shared.evict(for: path)
+        }
+        container.mainContext.delete(item)
     }
 
     // MARK: - Helpers

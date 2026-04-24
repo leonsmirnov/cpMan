@@ -24,6 +24,8 @@ struct PickerView: View {
     @State private var searchText    = ""
     @State private var debouncedQuery = ""
     @State private var debounceTask:  Task<Void, Never>?
+    @State private var syncTask: Task<Void, Never>?
+    @State private var showPinnedOnly = false
 
     /// Snapshot of the history list for the current picker session.
     /// Refreshes when the picker opens, the search query changes, or the store
@@ -46,6 +48,8 @@ struct PickerView: View {
                 Divider()
             }
             searchBar
+            Divider()
+            filterTabs
             Divider()
             if displayedItems.isEmpty {
                 emptyState
@@ -78,19 +82,33 @@ struct PickerView: View {
         .onAppear { reload() }
         .onReceive(refreshPublisher ?? Empty().eraseToAnyPublisher()) { _ in reload() }
         .onReceive(store.objectWillChange) { _ in
-            syncDisplayedItemsFromStore()
+            syncTask?.cancel()
+            syncTask = Task {
+                try? await Task.sleep(for: .milliseconds(100))
+                guard !Task.isCancelled else { return }
+                syncDisplayedItemsFromStore()
+            }
         }
         .onDisappear {
             debounceTask?.cancel()
+            syncTask?.cancel()
         }
-        // Refresh displayed list whenever the debounced query settles.
-        .onChange(of: debouncedQuery) { _, new in
-            displayedItems = store.allItems(matching: new)
-            selectedID     = displayedItems.first?.id
-        }
+        // Refresh displayed list whenever the debounced query or filter settles.
+        .onChange(of: debouncedQuery) { _, _ in updateDisplayedItems() }
+        .onChange(of: showPinnedOnly) { _, _ in updateDisplayedItems() }
         // Hotkey pressed while the picker is already open → move selection down.
         .onReceive(navigateDownPublisher ?? Empty().eraseToAnyPublisher()) { _ in
             moveSelection(+1)
+        }
+        .background {
+            Button("Pin") {
+                if let id = selectedID, let item = displayedItems.first(where: { $0.id == id }) {
+                    store.togglePin(item)
+                    updateDisplayedItems()
+                }
+            }
+            .keyboardShortcut("p", modifiers: .command)
+            .hidden()
         }
     }
 
@@ -171,6 +189,18 @@ struct PickerView: View {
         .padding(.vertical, 10)
     }
 
+    // MARK: - Filter Tabs
+
+    private var filterTabs: some View {
+        Picker("Filter", selection: $showPinnedOnly) {
+            Text("All Items").tag(false)
+            Text("Pinned").tag(true)
+        }
+        .pickerStyle(.segmented)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+    }
+
     // MARK: - Item list
 
     private var itemList: some View {
@@ -194,6 +224,15 @@ struct PickerView: View {
                             expandChevron(for: item)
                         }
                         .contextMenu {
+                            Button {
+                                store.togglePin(item)
+                                updateDisplayedItems()
+                            } label: {
+                                Label(item.isPinned ? "Unpin" : "Pin", systemImage: item.isPinned ? "pin.slash" : "pin")
+                            }
+                            
+                            Divider()
+
                             Button {
                                 onSelect(item)
                             } label: {
@@ -297,11 +336,21 @@ struct PickerView: View {
 
     // MARK: - Keyboard actions
 
+    private func updateDisplayedItems() {
+        var items = store.allItems(matching: debouncedQuery)
+        if showPinnedOnly {
+            items = items.filter { $0.isPinned }
+        }
+        displayedItems = items
+        if !displayedItems.contains(where: { $0.id == selectedID }) {
+            selectedID = displayedItems.first?.id
+        }
+    }
+
     private func reload() {
         searchText     = ""
         debouncedQuery = ""
-        displayedItems = store.allItems()
-        selectedID     = displayedItems.first?.id
+        updateDisplayedItems()
 
         // First time the picker opens and auto-paste is on but AX not granted:
         // automatically open System Settings so the user only has to flip one toggle.
@@ -319,7 +368,8 @@ struct PickerView: View {
             store: store,
             matching: debouncedQuery,
             previousSelection: selectedID,
-            expandedID: expandedID
+            expandedID: expandedID,
+            pinnedOnly: showPinnedOnly
         )
         displayedItems = snap.items
         selectedID     = snap.selectedID
@@ -362,11 +412,42 @@ struct PickerView: View {
             }
         case .text:
             guard let text = item.textValue else { return }
-            let tempURL = FileManager.default.temporaryDirectory
-                .appendingPathComponent("cpman-preview-\(item.id).txt")
-            try? text.write(to: tempURL, atomically: true, encoding: .utf8)
+            let previewDir = Self.previewDirectory()
+            let tempURL = previewDir.appendingPathComponent(UUID().uuidString + ".txt")
+            do {
+                try text.write(to: tempURL, atomically: true, encoding: .utf8)
+                // Restrict to owner-only so other users can't read clipboard content.
+                try FileManager.default.setAttributes(
+                    [.posixPermissions: 0o600], ofItemAtPath: tempURL.path
+                )
+            } catch {
+                return
+            }
             NSWorkspace.shared.open(tempURL)
         }
+    }
+
+    /// Returns a dedicated preview directory under Application Support with
+    /// owner-only permissions. Cleans up files older than 5 minutes on each call.
+    private static func previewDirectory() -> URL {
+        let support = FileManager.default
+            .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let dir = support.appendingPathComponent("cpMan/Previews", isDirectory: true)
+        let fm = FileManager.default
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path)
+
+        // Clean up stale preview files (older than 5 minutes).
+        let cutoff = Date().addingTimeInterval(-300)
+        if let files = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.creationDateKey]) {
+            for file in files {
+                if let created = (try? file.resourceValues(forKeys: [.creationDateKey]))?.creationDate,
+                   created < cutoff {
+                    try? fm.removeItem(at: file)
+                }
+            }
+        }
+        return dir
     }
 
     @ViewBuilder
@@ -400,9 +481,13 @@ enum PickerListSync {
         store: HistoryStore,
         matching query: String,
         previousSelection: UUID?,
-        expandedID: UUID?
+        expandedID: UUID?,
+        pinnedOnly: Bool = false
     ) -> (items: [ClipboardItem], selectedID: UUID?, expandedID: UUID?) {
-        let fresh = store.allItems(matching: query)
+        var fresh = store.allItems(matching: query)
+        if pinnedOnly {
+            fresh = fresh.filter { $0.isPinned }
+        }
 
         let selectedID: UUID?
         if let id = previousSelection, fresh.contains(where: { $0.id == id }) {
@@ -475,6 +560,7 @@ struct ClipboardItemRow: View {
     var shortcutNumber: Int?
     var isSelected: Bool = false
     var isExpanded: Bool = false
+    @State private var thumbnail: NSImage? = nil
 
     var body: some View {
         HStack(spacing: 10) {
@@ -519,9 +605,8 @@ struct ClipboardItemRow: View {
                 .animation(.easeInOut(duration: 0.15), value: isExpanded)
         } else if item.contentType == .image, let path = item.imageFilePath {
             let maxPts: CGFloat = isExpanded ? 240 : 80
-            let thumb = ThumbnailCache.shared.thumbnail(for: path, maxPoints: maxPts)
             HStack(spacing: 8) {
-                if let thumb {
+                if let thumb = thumbnail {
                     Image(nsImage: thumb)
                         .resizable()
                         .scaledToFit()
@@ -542,16 +627,26 @@ struct ClipboardItemRow: View {
                         .lineLimit(isExpanded ? nil : 2)
                 }
             }
+            .task(id: "\(path)-\(isExpanded)") {
+                thumbnail = await ThumbnailCache.shared.thumbnailAsync(for: path, maxPoints: maxPts)
+            }
         }
     }
 
     private var metaInfo: some View {
         VStack(alignment: .trailing, spacing: 2) {
-            if let app = item.sourceApp {
-                Text(app)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
+            HStack(spacing: 4) {
+                if item.isPinned {
+                    Image(systemName: "pin.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.orange)
+                }
+                if let app = item.sourceApp {
+                    Text(app)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
             }
             Text(item.createdAt, style: .relative)
                 .font(.system(size: 10))

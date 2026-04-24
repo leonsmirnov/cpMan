@@ -79,7 +79,7 @@ struct HistorySettingsView: View {
                     }
                     Button("Cancel", role: .cancel) {}
                 } message: {
-                    Text("This permanently deletes all \(store.allItems(fetchLimit: Int.max).count) items and cannot be undone.")
+                    Text("This permanently deletes all \(store.totalCount()) items and cannot be undone.")
                 }
             }
         }

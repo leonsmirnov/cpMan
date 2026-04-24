@@ -17,8 +17,8 @@ final class ClipboardMonitor {
     func start() {
         logger.info("Clipboard monitor started (poll interval: \(self.pollInterval)s)")
         timer = Timer.scheduledTimer(withTimeInterval: pollInterval, repeats: true) { _ in
-            MainActor.assumeIsolated {
-                ClipboardMonitor.shared.checkPasteboard()
+            Task { @MainActor in
+                await ClipboardMonitor.shared.checkPasteboard()
             }
         }
     }
@@ -36,7 +36,7 @@ final class ClipboardMonitor {
         logger.info("Clipboard monitor stopped")
     }
 
-    private func checkPasteboard() {
+    private func checkPasteboard() async {
         let pasteboard = NSPasteboard.general
         guard pasteboard.changeCount != lastChangeCount else { return }
         lastChangeCount = pasteboard.changeCount
@@ -59,7 +59,7 @@ final class ClipboardMonitor {
             return
         }
 
-        guard let item = readItem(from: pasteboard, sourceApp: frontApp) else {
+        guard let item = await readItem(from: pasteboard, sourceApp: frontApp) else {
             logger.debug("Pasteboard change contained no supported content (text/image)")
             return
         }
@@ -86,7 +86,7 @@ final class ClipboardMonitor {
     private func readItem(
         from pasteboard: NSPasteboard,
         sourceApp: NSRunningApplication?
-    ) -> ClipboardItem? {
+    ) async -> ClipboardItem? {
         let appName  = sourceApp?.localizedName
         let bundleId = sourceApp?.bundleIdentifier
 
@@ -102,7 +102,7 @@ final class ClipboardMonitor {
 
         // Images take priority over text (apps often write both representations)
         if let image = NSImage(pasteboard: pasteboard) {
-            return ImageProcessor.shared.processCapture(
+            return await ImageProcessor.shared.processCapture(
                 image: image,
                 sourceApp: appName,
                 sourceBundleId: bundleId
