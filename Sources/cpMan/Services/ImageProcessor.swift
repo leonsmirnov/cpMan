@@ -114,7 +114,9 @@ final class ImageProcessor {
 
     /// Dedicated export directory under Application Support with owner-only
     /// permissions. Cleans up files older than 5 minutes on each access.
-    private var exportsDirectory: URL {
+    /// Internal (not private) so unit tests can verify directory permissions
+    /// and the stale-file cleanup contract on the real production code path.
+    var exportsDirectory: URL {
         let support = FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         let dir = support.appendingPathComponent("cpMan/Exports", isDirectory: true)

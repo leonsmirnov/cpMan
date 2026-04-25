@@ -40,8 +40,11 @@ final class HistoryStore: ObservableObject {
 
     func insert(_ item: ClipboardItem) {
         container.mainContext.insert(item)
+        // pruneIfNeeded() mutates the context but does NOT save/notify — we do
+        // that once at the end so insert + prune is a single save + a single
+        // objectWillChange notification, regardless of how many rows were pruned.
+        _ = pruneIfNeeded()
         save()
-        pruneIfNeeded()
         objectWillChange.send()
     }
 
@@ -135,7 +138,13 @@ final class HistoryStore: ObservableObject {
 
     // MARK: - Pruning
 
-    private func pruneIfNeeded() {
+    /// Mutates the context to satisfy count/age/size limits. Does NOT save and
+    /// does NOT call `objectWillChange.send()` — the caller is responsible for
+    /// doing that exactly once after pruning, so insert + prune is a single
+    /// save + a single notification regardless of how many rows were removed.
+    /// Returns `true` if anything was removed.
+    @discardableResult
+    private func pruneIfNeeded() -> Bool {
         let settings = AppSettings.shared
         var didPrune = false
 
@@ -147,7 +156,7 @@ final class HistoryStore: ObservableObject {
             )
             let unpinnedCount = (try? container.mainContext.fetchCount(countDescriptor)) ?? 0
             let buffer = min(100, countLimit / 10)
-            
+
             if unpinnedCount > countLimit + buffer {
                 let excessCount = unpinnedCount - countLimit
                 var descriptor = FetchDescriptor<ClipboardItem>(
@@ -183,7 +192,7 @@ final class HistoryStore: ObservableObject {
                 predicate: #Predicate<ClipboardItem> { !$0.isPinned && $0.imageFilePath != nil },
                 sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
             )
-            guard let imageItems = try? container.mainContext.fetch(descriptor) else { return }
+            guard let imageItems = try? container.mainContext.fetch(descriptor) else { return didPrune }
             var totalBytes = imageItems.compactMap(\.imageSizeBytes).reduce(0, +)
             for item in imageItems.reversed() where totalBytes > maxBytes {
                 totalBytes -= item.imageSizeBytes ?? 0
@@ -192,11 +201,7 @@ final class HistoryStore: ObservableObject {
             }
         }
 
-        // Single save + notification for the entire prune pass.
-        if didPrune {
-            save()
-            objectWillChange.send()
-        }
+        return didPrune
     }
 
     // MARK: - Private: item removal without save/notify

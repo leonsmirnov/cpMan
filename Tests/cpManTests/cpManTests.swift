@@ -829,18 +829,30 @@ final class AccessibilityServiceTests: XCTestCase {
     }
 }
 
-// MARK: - C1 Fix: Batch pruning (single save + notification per prune pass)
+// MARK: - Batch pruning (single save + notification per insert/prune pass)
 
+/// These tests share the AppSettings.shared singleton — never enable parallel
+/// test execution for this class without introducing a settings injection seam.
 @MainActor
 final class BatchPruningTests: XCTestCase {
-    func testPruningFiresObjectWillChangeOnlyOnce() async {
-        let store = HistoryStore.makeForTesting()
-        let settings = AppSettings.shared
-        let originalLimit = settings.historyCountLimit
-        settings.historyCountLimit = 2
-        defer { settings.historyCountLimit = originalLimit }
+    private var originalCountLimit: Int = 0
 
-        // Insert 2 items to fill the limit.
+    override func setUp() async throws {
+        try await super.setUp()
+        originalCountLimit = AppSettings.shared.historyCountLimit
+    }
+
+    override func tearDown() async throws {
+        AppSettings.shared.historyCountLimit = originalCountLimit
+        try await super.tearDown()
+    }
+
+    /// After Fix A: insert + prune fires `objectWillChange` exactly once even
+    /// when pruning removes one or more rows.
+    func testInsertWithPruneFiresExactlyOneNotification() async {
+        let store = HistoryStore.makeForTesting()
+        AppSettings.shared.historyCountLimit = 2
+
         store.insert(ClipboardItem(
             createdAt: Date(timeIntervalSince1970: 1), contentType: .text, textValue: "a"
         ))
@@ -848,40 +860,50 @@ final class BatchPruningTests: XCTestCase {
             createdAt: Date(timeIntervalSince1970: 2), contentType: .text, textValue: "b"
         ))
 
-        // Start counting objectWillChange notifications.
         var notificationCount = 0
         let cancellable = store.objectWillChange.sink { _ in
             notificationCount += 1
         }
 
-        // Insert one more item — this triggers pruning of 1 item.
-        // Before the C1 fix, this would fire 2 notifications (one from delete
-        // inside pruneIfNeeded, one from insert). Now it should fire exactly 2:
-        // one from insert, one from pruneIfNeeded — both at the end, not per-item.
+        // Buffer = min(100, 2/10) = 0, so this insert tips us to 3 items and
+        // pruning removes the oldest. Despite touching multiple rows, the
+        // store must publish exactly one change event.
         store.insert(ClipboardItem(
             createdAt: Date(timeIntervalSince1970: 3), contentType: .text, textValue: "c"
         ))
 
-        // insert() fires objectWillChange once, pruneIfNeeded() fires once.
-        XCTAssertEqual(notificationCount, 2,
-                       "insert + prune should produce exactly 2 objectWillChange notifications")
+        XCTAssertEqual(notificationCount, 1,
+                       "insert + prune must produce exactly one objectWillChange notification")
 
         let remaining = store.allItems()
-        XCTAssertEqual(remaining.count, 2, "Only 2 items should remain after pruning")
-        XCTAssertTrue(remaining.contains { $0.textValue == "c" })
-        XCTAssertTrue(remaining.contains { $0.textValue == "b" })
+        XCTAssertEqual(remaining.count, 2)
+        XCTAssertEqual(Set(remaining.compactMap(\.textValue)), Set(["b", "c"]))
 
         cancellable.cancel()
     }
 
-    func testBulkPruningStillDeletesCorrectItems() async {
+    /// Fast path: insert that does NOT trigger pruning still fires exactly once.
+    func testInsertWithoutPruneFiresExactlyOneNotification() async {
         let store = HistoryStore.makeForTesting()
-        let settings = AppSettings.shared
-        let originalLimit = settings.historyCountLimit
-        settings.historyCountLimit = 2
-        defer { settings.historyCountLimit = originalLimit }
+        AppSettings.shared.historyCountLimit = 100   // far above what we insert
 
-        // Insert 5 items — pruning should keep only the 2 most recent.
+        var notificationCount = 0
+        let cancellable = store.objectWillChange.sink { _ in
+            notificationCount += 1
+        }
+
+        store.insert(ClipboardItem(
+            createdAt: Date(timeIntervalSince1970: 1), contentType: .text, textValue: "x"
+        ))
+
+        XCTAssertEqual(notificationCount, 1)
+        cancellable.cancel()
+    }
+
+    func testBulkPruningKeepsOnlyTheNewestItems() async {
+        let store = HistoryStore.makeForTesting()
+        AppSettings.shared.historyCountLimit = 2
+
         for i in 1...5 {
             store.insert(ClipboardItem(
                 createdAt: Date(timeIntervalSince1970: Double(i)),
@@ -893,13 +915,19 @@ final class BatchPruningTests: XCTestCase {
         let remaining = store.allItems()
         XCTAssertEqual(remaining.count, 2)
         XCTAssertEqual(remaining.map(\.textValue), ["item 5", "item 4"],
-                       "Only the 2 newest items should survive bulk pruning")
+                       "Only the two newest items should survive bulk pruning")
     }
 
-    func testDeleteAllBatchesRemoval() async {
+    func testDeleteAllFiresExactlyOneNotification() async {
         let store = HistoryStore.makeForTesting()
+        // Use deterministic, monotonically increasing timestamps so the
+        // SwiftData fetch order is stable across machines and clock resolutions.
         for i in 1...10 {
-            store.insert(ClipboardItem(contentType: .text, textValue: "item \(i)"))
+            store.insert(ClipboardItem(
+                createdAt: Date(timeIntervalSince1970: Double(i)),
+                contentType: .text,
+                textValue: "item \(i)"
+            ))
         }
         XCTAssertEqual(store.allItems().count, 10)
 
@@ -910,154 +938,326 @@ final class BatchPruningTests: XCTestCase {
 
         store.deleteAll()
 
-        // deleteAll should produce exactly 1 objectWillChange, not 10.
         XCTAssertEqual(notificationCount, 1,
-                       "deleteAll must fire objectWillChange exactly once, not per-item")
+                       "deleteAll must fire objectWillChange exactly once, not per item")
         XCTAssertEqual(store.allItems().count, 0)
 
         cancellable.cancel()
     }
 }
 
-// MARK: - C2 Fix: ThumbnailCache eviction of all pixel-size variants
+// MARK: - ThumbnailCache eviction (real cache hits + misses, not stubs)
 
-@MainActor
+/// Verifies that `evict(for:)` actually drops cached entries by relying on
+/// `NSImage` reference identity: a cache hit returns the same instance, a
+/// cache miss returns a freshly decoded one.
 final class ThumbnailCacheEvictionTests: XCTestCase {
-    func testEvictRemovesBothDefaultAndExpandedKeys() {
+    private var pngURL: URL!
+
+    override func setUp() {
+        super.setUp()
+        // Write a small real PNG into a unique temp file so CGImageSource
+        // can actually decode it. Using a UUID name keeps tests independent
+        // when the singleton ThumbnailCache survives between test cases.
+        pngURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cpman-thumb-test-\(UUID().uuidString).png")
+        try? Self.makeTinyPNG(at: pngURL)
+    }
+
+    override func tearDown() {
+        if let url = pngURL {
+            try? FileManager.default.removeItem(at: url)
+            ThumbnailCache.shared.evict(for: url.path)
+        }
+        super.tearDown()
+    }
+
+    func testEvictDropsCachedDefaultAndExpandedVariants() throws {
         let cache = ThumbnailCache.shared
-        let path = "/tmp/cpman-test-thumb-\(UUID().uuidString).png"
+        let path = pngURL.path
 
-        // Create a tiny 1x1 image to insert into the cache manually.
-        let img = NSImage(size: NSSize(width: 1, height: 1))
-
-        // Simulate what ThumbnailCache.thumbnail(for:maxPoints:) does internally:
-        // default size (80pt → 160px) and expanded size (240pt → 480px).
-        let defaultKey  = "\(path):160" as NSString
-        let expandedKey = "\(path):480" as NSString
-
-        // Inject directly into the underlying NSCache via the public thumbnail API.
-        // Since we can't inject directly, verify evict clears both keys by checking
-        // that after evict, a subsequent thumbnail call returns nil (cache miss).
-        // We'll test the evict method by verifying it doesn't crash and clears both.
-
-        // The real test: evict must not crash and must handle both key formats.
+        // Sanity: ensure the cache starts empty for this path.
         cache.evict(for: path)
-        // After eviction, thumbnail should return nil (no file exists at path).
-        XCTAssertNil(cache.thumbnail(for: path, maxPoints: 80),
-                     "Thumbnail for evicted path should be nil")
-        XCTAssertNil(cache.thumbnail(for: path, maxPoints: 240),
-                     "Expanded thumbnail for evicted path should be nil")
-    }
-}
 
-// MARK: - C3 Fix: Preview directory security
-
-final class PreviewDirectorySecurityTests: XCTestCase {
-    func testPreviewDirectoryIsUnderApplicationSupport() {
-        let support = FileManager.default
-            .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let expectedDir = support.appendingPathComponent("cpMan/Previews")
-        let fm = FileManager.default
-
-        // Create the directory so we can check its attributes.
-        try? fm.createDirectory(at: expectedDir, withIntermediateDirectories: true)
-        try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: expectedDir.path)
-
-        XCTAssertTrue(fm.fileExists(atPath: expectedDir.path),
-                      "Preview directory must exist under Application Support/cpMan/Previews")
-
-        // Verify permissions are owner-only (0700).
-        if let attrs = try? fm.attributesOfItem(atPath: expectedDir.path),
-           let perms = attrs[.posixPermissions] as? Int {
-            XCTAssertEqual(perms, 0o700,
-                           "Preview directory must have 0700 permissions (owner-only)")
+        // Populate both variants and remember the decoded instances.
+        guard let normal1   = cache.thumbnail(for: path, maxPoints: ThumbnailSize.normal),
+              let expanded1 = cache.thumbnail(for: path, maxPoints: ThumbnailSize.expanded)
+        else {
+            return XCTFail("ThumbnailCache failed to decode the test PNG at \(path)")
         }
+
+        // Cache hit must return the *same* NSImage instance.
+        XCTAssertTrue(cache.thumbnail(for: path, maxPoints: ThumbnailSize.normal)   === normal1,
+                      "Second thumbnail() call must return the cached normal-size instance")
+        XCTAssertTrue(cache.thumbnail(for: path, maxPoints: ThumbnailSize.expanded) === expanded1,
+                      "Second thumbnail() call must return the cached expanded-size instance")
+
+        // Evict — both pixel-size variants must be cleared.
+        cache.evict(for: path)
+
+        guard let normal2   = cache.thumbnail(for: path, maxPoints: ThumbnailSize.normal),
+              let expanded2 = cache.thumbnail(for: path, maxPoints: ThumbnailSize.expanded)
+        else {
+            return XCTFail("Re-decode after eviction unexpectedly returned nil")
+        }
+        XCTAssertFalse(normal2   === normal1,
+                       "After evict, normal-size thumbnail must be re-decoded (cache miss)")
+        XCTAssertFalse(expanded2 === expanded1,
+                       "After evict, expanded-size thumbnail must be re-decoded (cache miss)")
     }
 
-    func testPreviewFileCleanupRemovesStaleFiles() {
-        let support = FileManager.default
-            .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let previewDir = support.appendingPathComponent("cpMan/Previews")
-        let fm = FileManager.default
-        try? fm.createDirectory(at: previewDir, withIntermediateDirectories: true)
+    func testEvictCoversEverySizeDeclaredInThumbnailSize() {
+        // Defence in depth: if someone adds a new size to ThumbnailSize.allPoints,
+        // populating it here and evicting must clear *that* variant too. The test
+        // iterates the same source-of-truth list the production cache uses.
+        let cache = ThumbnailCache.shared
+        let path  = pngURL.path
+        cache.evict(for: path)
 
-        // Create a fake stale file with an old creation date.
-        let staleFile = previewDir.appendingPathComponent("stale-\(UUID().uuidString).txt")
-        try? "stale content".write(to: staleFile, atomically: true, encoding: .utf8)
-
-        // Backdate the file's creation date to 10 minutes ago (beyond the 5-minute cutoff).
-        let tenMinAgo = Date().addingTimeInterval(-600)
-        try? fm.setAttributes([.creationDate: tenMinAgo], ofItemAtPath: staleFile.path)
-
-        // Simulate the cleanup logic from PickerView.previewDirectory().
-        let cutoff = Date().addingTimeInterval(-300)
-        if let files = try? fm.contentsOfDirectory(at: previewDir, includingPropertiesForKeys: [.creationDateKey]) {
-            for file in files {
-                if let created = (try? file.resourceValues(forKeys: [.creationDateKey]))?.creationDate,
-                   created < cutoff {
-                    try? fm.removeItem(at: file)
-                }
+        var firsts: [CGFloat: NSImage] = [:]
+        for points in ThumbnailSize.allPoints {
+            guard let img = cache.thumbnail(for: path, maxPoints: points) else {
+                return XCTFail("Failed to decode thumbnail at \(points)pt")
             }
+            firsts[points] = img
         }
 
-        XCTAssertFalse(fm.fileExists(atPath: staleFile.path),
-                       "Stale preview file (>5 min) must be cleaned up")
+        cache.evict(for: path)
+
+        for points in ThumbnailSize.allPoints {
+            guard let again = cache.thumbnail(for: path, maxPoints: points) else {
+                return XCTFail("Re-decode after evict returned nil at \(points)pt")
+            }
+            XCTAssertFalse(again === firsts[points],
+                           "evict(for:) must drop the cached entry at \(points)pt")
+        }
+    }
+
+    // MARK: - PNG fixture
+
+    private static func makeTinyPNG(at url: URL) throws {
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: 4,
+            pixelsHigh: 4,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ),
+        let data = rep.representation(using: .png, properties: [:])
+        else { throw NSError(domain: "ThumbnailCacheEvictionTests", code: 1) }
+        try data.write(to: url)
     }
 }
 
-// MARK: - C4 Fix: Export directory security
+// MARK: - Preview directory (PickerView.previewDirectory) — exercises real code
+
+/// These tests call the actual production helpers — not a copy of their logic —
+/// so a regression in the real implementation will fail the test.
+@MainActor
+final class PreviewDirectorySecurityTests: XCTestCase {
+    func testPreviewDirectoryExistsWithOwnerOnlyPermissions() throws {
+        let dir = PickerView.previewDirectory()
+        let fm  = FileManager.default
+
+        XCTAssertTrue(fm.fileExists(atPath: dir.path),
+                      "previewDirectory() must create the directory if missing")
+
+        let attrs = try fm.attributesOfItem(atPath: dir.path)
+        XCTAssertEqual(attrs[.posixPermissions] as? Int, 0o700,
+                       "Preview directory must be owner-only (0700)")
+
+        XCTAssertTrue(dir.path.hasSuffix("cpMan/Previews"),
+                      "Preview directory must live under cpMan/Previews — got \(dir.path)")
+    }
+
+    func testPreviewDirectoryRemovesStaleFilesOnAccess() throws {
+        let dir = PickerView.previewDirectory()
+        let fm  = FileManager.default
+
+        let staleURL = dir.appendingPathComponent("stale-\(UUID().uuidString).txt")
+        let freshURL = dir.appendingPathComponent("fresh-\(UUID().uuidString).txt")
+        defer {
+            try? fm.removeItem(at: staleURL)
+            try? fm.removeItem(at: freshURL)
+        }
+
+        try "stale".write(to: staleURL, atomically: true, encoding: .utf8)
+        try "fresh".write(to: freshURL, atomically: true, encoding: .utf8)
+        try fm.setAttributes([.creationDate: Date(timeIntervalSinceNow: -600)],
+                             ofItemAtPath: staleURL.path)
+        try fm.setAttributes([.creationDate: Date()],
+                             ofItemAtPath: freshURL.path)
+
+        // Calling previewDirectory() again triggers the cleanup.
+        _ = PickerView.previewDirectory()
+
+        XCTAssertFalse(fm.fileExists(atPath: staleURL.path),
+                       "Stale file (>5 min) must be removed by previewDirectory() cleanup")
+        XCTAssertTrue(fm.fileExists(atPath: freshURL.path),
+                      "Fresh file (<5 min) must NOT be removed by previewDirectory() cleanup")
+    }
+}
+
+// MARK: - Export directory (ImageProcessor.exportsDirectory) — exercises real code
 
 @MainActor
 final class ExportDirectorySecurityTests: XCTestCase {
-    func testExportDirectoryIsUnderApplicationSupport() {
-        let support = FileManager.default
-            .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let expectedDir = support.appendingPathComponent("cpMan/Exports")
-        let fm = FileManager.default
+    func testExportDirectoryExistsWithOwnerOnlyPermissions() throws {
+        let dir = ImageProcessor.shared.exportsDirectory
+        let fm  = FileManager.default
 
-        // Create the directory so we can check its attributes.
-        try? fm.createDirectory(at: expectedDir, withIntermediateDirectories: true)
-        try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: expectedDir.path)
+        XCTAssertTrue(fm.fileExists(atPath: dir.path),
+                      "exportsDirectory must create the directory if missing")
 
-        XCTAssertTrue(fm.fileExists(atPath: expectedDir.path),
-                      "Export directory must exist under Application Support/cpMan/Exports")
+        let attrs = try fm.attributesOfItem(atPath: dir.path)
+        XCTAssertEqual(attrs[.posixPermissions] as? Int, 0o700,
+                       "Export directory must be owner-only (0700)")
 
-        // Verify permissions are owner-only (0700).
-        if let attrs = try? fm.attributesOfItem(atPath: expectedDir.path),
-           let perms = attrs[.posixPermissions] as? Int {
-            XCTAssertEqual(perms, 0o700,
-                           "Export directory must have 0700 permissions (owner-only)")
-        }
+        XCTAssertTrue(dir.path.hasSuffix("cpMan/Exports"),
+                      "Export directory must live under cpMan/Exports — got \(dir.path)")
     }
 
-    func testExportFileCleanupRemovesStaleFiles() {
-        let support = FileManager.default
-            .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let exportDir = support.appendingPathComponent("cpMan/Exports")
-        let fm = FileManager.default
-        try? fm.createDirectory(at: exportDir, withIntermediateDirectories: true)
+    func testExportDirectoryRemovesStaleFilesOnAccess() throws {
+        let dir = ImageProcessor.shared.exportsDirectory
+        let fm  = FileManager.default
 
-        // Create a fake stale file with an old creation date.
-        let staleFile = exportDir.appendingPathComponent("stale-\(UUID().uuidString).png")
-        try? Data([0x89, 0x50, 0x4E, 0x47]).write(to: staleFile) // fake PNG header
-
-        // Backdate the file's creation date to 10 minutes ago.
-        let tenMinAgo = Date().addingTimeInterval(-600)
-        try? fm.setAttributes([.creationDate: tenMinAgo], ofItemAtPath: staleFile.path)
-
-        // Simulate the cleanup logic from ImageProcessor.exportsDirectory.
-        let cutoff = Date().addingTimeInterval(-300)
-        if let files = try? fm.contentsOfDirectory(at: exportDir, includingPropertiesForKeys: [.creationDateKey]) {
-            for file in files {
-                if let created = (try? file.resourceValues(forKeys: [.creationDateKey]))?.creationDate,
-                   created < cutoff {
-                    try? fm.removeItem(at: file)
-                }
-            }
+        let staleURL = dir.appendingPathComponent("stale-\(UUID().uuidString).png")
+        let freshURL = dir.appendingPathComponent("fresh-\(UUID().uuidString).png")
+        defer {
+            try? fm.removeItem(at: staleURL)
+            try? fm.removeItem(at: freshURL)
         }
 
-        XCTAssertFalse(fm.fileExists(atPath: staleFile.path),
-                       "Stale export file (>5 min) must be cleaned up")
+        try Data([0x89, 0x50, 0x4E, 0x47]).write(to: staleURL)
+        try Data([0x89, 0x50, 0x4E, 0x47]).write(to: freshURL)
+        try fm.setAttributes([.creationDate: Date(timeIntervalSinceNow: -600)],
+                             ofItemAtPath: staleURL.path)
+        try fm.setAttributes([.creationDate: Date()],
+                             ofItemAtPath: freshURL.path)
+
+        // Calling exportsDirectory again triggers the cleanup.
+        _ = ImageProcessor.shared.exportsDirectory
+
+        XCTAssertFalse(fm.fileExists(atPath: staleURL.path),
+                       "Stale file (>5 min) must be removed by exportsDirectory cleanup")
+        XCTAssertTrue(fm.fileExists(atPath: freshURL.path),
+                      "Fresh file (<5 min) must NOT be removed by exportsDirectory cleanup")
+    }
+}
+
+// MARK: - Edge cases not previously covered
+
+@MainActor
+final class HistoryStoreEdgeCaseTests: XCTestCase {
+    func testTotalCountReflectsAllRowsIncludingPinned() async {
+        let store = HistoryStore.makeForTesting()
+        XCTAssertEqual(store.totalCount(), 0)
+
+        store.insert(ClipboardItem(contentType: .text, textValue: "one"))
+        store.insert(ClipboardItem(contentType: .text, textValue: "two"))
+        let pinned = ClipboardItem(contentType: .text, textValue: "pinned", isPinned: true)
+        store.insert(pinned)
+
+        XCTAssertEqual(store.totalCount(), 3,
+                       "totalCount() must include pinned and unpinned rows")
+    }
+
+    func testSearchPredicateMatchesOcrText() async {
+        let store = HistoryStore.makeForTesting()
+        let imageItem = ClipboardItem(
+            contentType: .image,
+            textValue: nil,
+            ocrText: "Invoice number 12345",
+            imageFilePath: "/nonexistent/img.png"
+        )
+        store.insert(imageItem)
+        store.insert(ClipboardItem(contentType: .text, textValue: "unrelated"))
+
+        let hits = store.allItems(matching: "invoice")
+        XCTAssertEqual(hits.count, 1, "Search must match OCR text on image rows")
+        XCTAssertEqual(hits.first?.ocrText, "Invoice number 12345")
+    }
+
+    func testSearchPredicateIsDiacriticAndCaseInsensitive() async {
+        let store = HistoryStore.makeForTesting()
+        store.insert(ClipboardItem(contentType: .text, textValue: "Café au lait"))
+
+        // localizedStandardContains ignores case; diacritic-insensitivity is locale-dependent
+        // but the contract under default macOS locales is that "cafe" matches "Café".
+        XCTAssertEqual(store.allItems(matching: "CAFÉ").count, 1, "case-insensitive failed")
+        XCTAssertEqual(store.allItems(matching: "cafe").count, 1, "diacritic-insensitive failed")
+    }
+
+    func testEmptyQueryReturnsEverythingNewestFirst() async {
+        let store = HistoryStore.makeForTesting()
+        store.insert(ClipboardItem(
+            createdAt: Date(timeIntervalSince1970: 1), contentType: .text, textValue: "old"
+        ))
+        store.insert(ClipboardItem(
+            createdAt: Date(timeIntervalSince1970: 2), contentType: .text, textValue: "new"
+        ))
+
+        XCTAssertEqual(store.allItems().map(\.textValue), ["new", "old"])
+    }
+}
+
+// MARK: - PickerListSync with pinned-only filter
+
+@MainActor
+final class PickerListSyncPinnedFilterTests: XCTestCase {
+    func testPinnedOnlyFilterReturnsOnlyPinnedItems() async {
+        let store = HistoryStore.makeForTesting()
+        let t1 = Date(timeIntervalSince1970: 1)
+        let t2 = Date(timeIntervalSince1970: 2)
+        let t3 = Date(timeIntervalSince1970: 3)
+
+        store.insert(ClipboardItem(
+            createdAt: t1, contentType: .text, textValue: "regular"
+        ))
+        store.insert(ClipboardItem(
+            createdAt: t2, contentType: .text, textValue: "pinned-A", isPinned: true
+        ))
+        store.insert(ClipboardItem(
+            createdAt: t3, contentType: .text, textValue: "pinned-B", isPinned: true
+        ))
+
+        let (items, _, _) = PickerListSync.snapshot(
+            store: store,
+            matching: "",
+            previousSelection: nil,
+            expandedID: nil,
+            pinnedOnly: true
+        )
+        XCTAssertEqual(items.map(\.textValue), ["pinned-B", "pinned-A"],
+                       "Pinned-only filter must drop unpinned items and keep newest-first order")
+    }
+
+    func testPinnedOnlyFilterCombinesWithSearchQuery() async {
+        let store = HistoryStore.makeForTesting()
+        store.insert(ClipboardItem(
+            contentType: .text, textValue: "alpha pinned", isPinned: true
+        ))
+        store.insert(ClipboardItem(
+            contentType: .text, textValue: "alpha not pinned", isPinned: false
+        ))
+        store.insert(ClipboardItem(
+            contentType: .text, textValue: "beta pinned", isPinned: true
+        ))
+
+        let (items, _, _) = PickerListSync.snapshot(
+            store: store,
+            matching: "alpha",
+            previousSelection: nil,
+            expandedID: nil,
+            pinnedOnly: true
+        )
+        XCTAssertEqual(items.count, 1)
+        XCTAssertEqual(items.first?.textValue, "alpha pinned")
     }
 }
 

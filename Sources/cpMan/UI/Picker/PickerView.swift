@@ -429,7 +429,9 @@ struct PickerView: View {
 
     /// Returns a dedicated preview directory under Application Support with
     /// owner-only permissions. Cleans up files older than 5 minutes on each call.
-    private static func previewDirectory() -> URL {
+    /// Internal (not private) so unit tests can verify directory permissions
+    /// and the stale-file cleanup contract on the real production code path.
+    static func previewDirectory() -> URL {
         let support = FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         let dir = support.appendingPathComponent("cpMan/Previews", isDirectory: true)
@@ -604,21 +606,22 @@ struct ClipboardItemRow: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .animation(.easeInOut(duration: 0.15), value: isExpanded)
         } else if item.contentType == .image, let path = item.imageFilePath {
-            let maxPts: CGFloat = isExpanded ? 240 : 80
+            let maxPts: CGFloat = isExpanded ? ThumbnailSize.expanded : ThumbnailSize.normal
+            // Display height is independent of the source thumbnail size; keep
+            // it linked to `maxPts` so the row geometry tracks the cache key.
+            let displayHeight: CGFloat = isExpanded ? 160 : 48
             HStack(spacing: 8) {
                 if let thumb = thumbnail {
                     Image(nsImage: thumb)
                         .resizable()
                         .scaledToFit()
-                        .frame(maxWidth: isExpanded ? 240 : 80,
-                               maxHeight: isExpanded ? 160 : 48)
+                        .frame(maxWidth: maxPts, maxHeight: displayHeight)
                         .cornerRadius(4)
                         .animation(.easeInOut(duration: 0.15), value: isExpanded)
                 } else {
                     RoundedRectangle(cornerRadius: 4)
                         .fill(.secondary.opacity(0.15))
-                        .frame(width: isExpanded ? 240 : 80,
-                               height: isExpanded ? 160 : 48)
+                        .frame(width: maxPts, height: displayHeight)
                 }
                 if let ocrText = item.ocrText, !ocrText.isEmpty {
                     Text(ocrText)
