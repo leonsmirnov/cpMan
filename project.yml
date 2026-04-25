@@ -23,6 +23,9 @@ targets:
       - path: Sources/cpMan/Resources
     postBuildScripts:
       - name: "Install to ~/Applications (stable AX permission path)"
+        # Avoid “will run every build” / dependency-analysis warning; this phase is
+        # intentionally unconditional for Debug (see script body).
+        basedOnDependencyAnalysis: false
         inputFiles:
           - "$(BUILT_PRODUCTS_DIR)/$(FULL_PRODUCT_NAME)/Contents/MacOS/$(PRODUCT_NAME)"
         script: |
