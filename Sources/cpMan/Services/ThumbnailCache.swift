@@ -65,7 +65,9 @@ final class ThumbnailCache: @unchecked Sendable {
 
     /// Returns a thumbnail asynchronously, offloading disk I/O to a background thread.
     /// Decoding returns `CGImage` from `Task.detached` (Sendable); `NSImage` is created
-    /// afterward so the result can cross actor boundaries under Swift 6.
+    /// on the main actor so `NSImage?` is not returned across a nonisolated async boundary
+    /// (it is not `Sendable` under strict concurrency).
+    @MainActor
     func thumbnailAsync(for path: String, maxPoints: CGFloat = ThumbnailSize.normal) async -> NSImage? {
         let maxPixels = ThumbnailSize.pixels(for: maxPoints)
         let cacheKey = Self.cacheKey(path: path, pixels: maxPixels)
