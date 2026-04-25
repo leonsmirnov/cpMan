@@ -64,18 +64,21 @@ final class ThumbnailCache: @unchecked Sendable {
     }
 
     /// Returns a thumbnail asynchronously, offloading disk I/O to a background thread.
+    /// Decoding returns `CGImage` from `Task.detached` (Sendable); `NSImage` is created
+    /// afterward so the result can cross actor boundaries under Swift 6.
     func thumbnailAsync(for path: String, maxPoints: CGFloat = ThumbnailSize.normal) async -> NSImage? {
         let maxPixels = ThumbnailSize.pixels(for: maxPoints)
         let cacheKey = Self.cacheKey(path: path, pixels: maxPixels)
 
         if let cached = cache.object(forKey: cacheKey) { return cached }
 
-        return await Task.detached(priority: .userInitiated) {
-            guard let (image, cost) = Self.decodeThumbnail(path: path, maxPixels: maxPixels)
-            else { return nil }
-            self.cache.setObject(image, forKey: cacheKey, cost: cost)
-            return image
+        let decoded: (CGImage, Int)? = await Task.detached(priority: .userInitiated) {
+            Self.decodeThumbnailCGImage(path: path, maxPixels: maxPixels)
         }.value
+        guard let (cg, cost) = decoded else { return nil }
+        let image = NSImage(cgImage: cg, size: .zero)
+        cache.setObject(image, forKey: cacheKey, cost: cost)
+        return image
     }
 
     // MARK: - Private helpers
@@ -84,9 +87,9 @@ final class ThumbnailCache: @unchecked Sendable {
         "\(path):\(pixels)" as NSString
     }
 
-    /// Decodes a downscaled thumbnail with CGImageSource and returns the image
-    /// plus its NSCache cost (RGBA bytes). Pure CG; safe to call off the main thread.
-    private static func decodeThumbnail(path: String, maxPixels: Int) -> (NSImage, Int)? {
+    /// Decodes a downscaled bitmap with CGImageSource. Safe to call from any thread.
+    /// `CGImage` is Sendable; use this inside `Task.detached`, then wrap in `NSImage`.
+    private static func decodeThumbnailCGImage(path: String, maxPixels: Int) -> (CGImage, Int)? {
         let url = URL(fileURLWithPath: path) as CFURL
         let opts: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageIfAbsent: true,
@@ -97,8 +100,12 @@ final class ThumbnailCache: @unchecked Sendable {
               let cgThumb = CGImageSourceCreateThumbnailAtIndex(source, 0, opts as CFDictionary)
         else { return nil }
 
-        let image = NSImage(cgImage: cgThumb, size: .zero)
         let cost = cgThumb.width * cgThumb.height * 4
-        return (image, cost)
+        return (cgThumb, cost)
+    }
+
+    private static func decodeThumbnail(path: String, maxPixels: Int) -> (NSImage, Int)? {
+        guard let (cg, cost) = decodeThumbnailCGImage(path: path, maxPixels: maxPixels) else { return nil }
+        return (NSImage(cgImage: cg, size: .zero), cost)
     }
 }

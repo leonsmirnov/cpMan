@@ -108,7 +108,7 @@ final class AccessibilityService: ObservableObject {
             forName: NSWorkspace.didActivateApplicationNotification,
             object: nil,
             queue: .main
-        ) { [weak self] notification in
+        ) { notification in
             // Recheck when the user switches AWAY from System Settings back to any app,
             // because that's the moment the permission toggle is already saved.
             if let info = notification.userInfo,
