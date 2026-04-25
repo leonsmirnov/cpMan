@@ -36,13 +36,16 @@ jobs:
         run: xcodegen generate
 
       - name: Resolve Swift packages
-        run: xcodebuild -resolvePackageDependencies -scheme cpMan
+        run: xcodebuild -project cpMan.xcodeproj -resolvePackageDependencies -scheme cpMan
 
       - name: Build Release
         run: |
+          set -o pipefail
           xcodebuild build \
+            -project cpMan.xcodeproj \
             -scheme cpMan \
             -configuration Release \
+            -destination 'generic/platform=macOS' \
             -derivedDataPath build/DerivedData \
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED=YES \

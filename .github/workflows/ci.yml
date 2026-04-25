@@ -28,7 +28,7 @@ jobs:
         run: xcodegen generate
 
       - name: Resolve Swift packages
-        run: xcodebuild -resolvePackageDependencies -scheme cpMan
+        run: xcodebuild -project cpMan.xcodeproj -resolvePackageDependencies -scheme cpMan
 
       - name: Run tests
         run: |

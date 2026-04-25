@@ -26,9 +26,14 @@ final class ImageProcessor {
         let sizeLimitEnabled = settings.imageSizeLimitEnabled
         let sizeLimitMB = settings.imageSizeLimitMB
 
+        // `NSImage` is not `Sendable`; `Task.detached` requires a `@Sendable` closure, so
+        // we bridge on the main actor with TIFF (lossless) and decode off-thread.
+        guard let tiff = image.tiffRepresentation else { return nil }
+
         // Offload heavy CPU and I/O work
-        let result: (URL, Int, Int, Int, String)? = await Task.detached(priority: .userInitiated) {
-            var processed = image
+        let result: (URL, Int, Int, Int, String)? = await Task.detached(priority: .userInitiated) { @Sendable in
+            guard let decoded = NSImage(data: tiff) else { return nil }
+            var processed = decoded
 
             if maxDimEnabled {
                 processed = Self.resize(processed, maxDimension: maxDim)
