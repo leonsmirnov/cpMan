@@ -2,6 +2,15 @@ import AppKit
 import Combine
 import SwiftUI
 
+/// Value-type payload for the text edit sheet so we never retain a `ClipboardItem`
+/// that SwiftData may delete while the sheet is open.
+private struct TextEditSession: Identifiable, Hashable {
+    let id: UUID
+    let originalText: String
+    let sourceApp: String?
+    let sourceBundleId: String?
+}
+
 struct PickerView: View {
     let onSelect:  (ClipboardItem) -> Void
     let onDismiss: () -> Void
@@ -30,13 +39,15 @@ struct PickerView: View {
     /// Refreshes when the picker opens, the search query changes, or the store
     /// changes (new copies while the picker is visible). Selection is kept on
     /// the same item by id when possible so the list does not jump under the user.
-    @State private var displayedItems: [ClipboardItem] = []
+    @State private var displayedItems: [PickerDisplayedRow] = []
 
     /// Identity-based selection. UUID never goes stale when the list reorders,
     /// unlike an integer index which silently points at a different item after
     /// any insert / sort change.
     @State private var selectedID: UUID? = nil
-    @State private var editingItem: ClipboardItem? = nil
+    /// Edit sheet must not retain `ClipboardItem` — the row can be deleted (prune / clear all)
+    /// while the sheet is open; reading a dead SwiftData model would crash like `ClipboardItemRow` did.
+    @State private var textEditSession: TextEditSession? = nil
     @State private var editingText: String = ""
     @State private var expandedID: UUID? = nil
 
@@ -58,22 +69,22 @@ struct PickerView: View {
         }
         .frame(width: 440, height: 520)
         .background(.ultraThinMaterial)
-        .sheet(item: $editingItem) { item in
+        .sheet(item: $textEditSession) { session in
             EditTextView(
-                originalText: item.textValue ?? "",
+                originalText: session.originalText,
                 editingText: $editingText
             ) { savedText in
                 let newItem = ClipboardItem(
-                    sourceApp: item.sourceApp,
-                    sourceBundleId: item.sourceBundleId,
+                    sourceApp: session.sourceApp,
+                    sourceBundleId: session.sourceBundleId,
                     contentType: .text,
                     textValue: savedText
                 )
                 store.insert(newItem)
                 reload()
-                editingItem = nil
+                textEditSession = nil
             } onCancel: {
-                editingItem = nil
+                textEditSession = nil
             }
         }
         // Reset state every time the picker opens.
@@ -98,8 +109,8 @@ struct PickerView: View {
         }
         .background {
             Button("Pin") {
-                if let id = selectedID, let item = displayedItems.first(where: { $0.id == id }) {
-                    store.togglePin(item)
+                if let id = selectedID, let live = store.item(for: id) {
+                    store.togglePin(live)
                     updateDisplayedItems()
                 }
             }
@@ -133,7 +144,7 @@ struct PickerView: View {
                         .font(.system(size: 11, weight: .medium))
                     Text("• If cpMan is in the list → toggle it **ON**")
                         .font(.system(size: 11))
-                    Text("• If cpMan is **not** in the list → click **+** at the bottom, open your Applications folder, and add cpMan")
+                    Text("• If **+** does not show cpMan: in the file sheet press **⌘⇧G**, type **~/Applications**, select **cpMan** (or try **/Applications** if you installed there).")
                         .font(.system(size: 11))
                 }
                 .foregroundStyle(.secondary)
@@ -203,76 +214,86 @@ struct PickerView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    ForEach(Array(displayedItems.enumerated()), id: \.1.id) { index, item in
+                    ForEach(Array(displayedItems.enumerated()), id: \.1.id) { index, row in
                         Button {
-                            onSelect(item)
+                            if let live = store.item(for: row.id) { onSelect(live) }
                         } label: {
                             ClipboardItemRow(
-                                item: item,
+                                row: row,
                                 shortcutNumber: index < 9 ? index + 1 : nil,
-                                isSelected: item.id == selectedID,
-                                isExpanded: item.id == expandedID
+                                isSelected: row.id == selectedID,
+                                isExpanded: row.id == expandedID
                             )
                         }
                         .buttonStyle(.plain)
-                        .id(item.id)
+                        .id(row.id)
                         .overlay(alignment: .topTrailing) {
-                            expandChevron(for: item)
+                            expandChevron(for: row)
                         }
                         .contextMenu {
                             Button {
-                                store.togglePin(item)
-                                updateDisplayedItems()
+                                if let live = store.item(for: row.id) {
+                                    store.togglePin(live)
+                                    updateDisplayedItems()
+                                }
                             } label: {
-                                Label(item.isPinned ? "Unpin" : "Pin", systemImage: item.isPinned ? "pin.slash" : "pin")
+                                Label(row.isPinned ? "Unpin" : "Pin", systemImage: row.isPinned ? "pin.slash" : "pin")
                             }
-                            
+
                             Divider()
 
                             Button {
-                                onSelect(item)
+                                if let live = store.item(for: row.id) { onSelect(live) }
                             } label: {
                                 Label("Paste", systemImage: "doc.on.clipboard")
                             }
 
-                            if item.contentType == .text {
+                            if row.contentType == .text {
                                 Button {
-                                    editingText = item.textValue ?? ""
-                                    editingItem = item
+                                    editingText = row.textValue ?? ""
+                                    textEditSession = TextEditSession(
+                                        id: row.id,
+                                        originalText: row.textValue ?? "",
+                                        sourceApp: row.sourceApp,
+                                        sourceBundleId: row.sourceBundleId
+                                    )
                                 } label: {
                                     Label("Edit", systemImage: "pencil")
                                 }
                                 Button {
+                                    guard let live = store.item(for: row.id) else { return }
                                     let targetApp = NSWorkspace.shared.frontmostApplication
-                                    store.touch(item)
+                                    store.touch(live)
                                     onDismiss()
-                                    PasteService.shared.pasteAsPlainText(item: item, into: targetApp)
+                                    PasteService.shared.pasteAsPlainText(item: live, into: targetApp)
                                 } label: {
                                     Label("Paste as Plain Text", systemImage: "doc.plaintext")
                                 }
                             }
 
-                            if item.contentType == .image {
+                            if row.contentType == .image {
                                 Button {
+                                    guard let live = store.item(for: row.id) else { return }
                                     let targetApp = NSWorkspace.shared.frontmostApplication
-                                    store.touch(item)
+                                    store.touch(live)
                                     onDismiss()
-                                    PasteService.shared.pasteAsFile(item: item, into: targetApp)
+                                    PasteService.shared.pasteAsFile(item: live, into: targetApp)
                                 } label: {
                                     Label("Paste as File", systemImage: "doc.badge.arrow.up")
                                 }
                                 Button {
+                                    guard let live = store.item(for: row.id) else { return }
                                     let targetApp = NSWorkspace.shared.frontmostApplication
-                                    store.touch(item)
+                                    store.touch(live)
                                     onDismiss()
-                                    PasteService.shared.pasteAsPlainText(item: item, into: targetApp)
+                                    PasteService.shared.pasteAsPlainText(item: live, into: targetApp)
                                 } label: {
                                     Label("Paste OCR Text", systemImage: "text.viewfinder")
                                 }
-                                .disabled((item.ocrText ?? "").isEmpty)
+                                .disabled((row.ocrText ?? "").isEmpty)
                             }
 
-                            if let text = item.ocrText, !text.isEmpty, item.contentType == .image {
+                            if let text = row.ocrText, !text.isEmpty, row.contentType == .image {
                                 Button {
                                     NSPasteboard.general.clearContents()
                                     NSPasteboard.general.setString(text, forType: .string)
@@ -285,7 +306,7 @@ struct PickerView: View {
                             Divider()
 
                             Button {
-                                previewItem(item)
+                                previewRow(row)
                             } label: {
                                 Label("Open Preview", systemImage: "eye")
                             }
@@ -293,8 +314,10 @@ struct PickerView: View {
                             Divider()
 
                             Button(role: .destructive) {
-                                store.delete(item)
-                                reload()
+                                if let live = store.item(for: row.id) {
+                                    store.delete(live)
+                                    reload()
+                                }
                             } label: {
                                 Label("Delete", systemImage: "trash")
                             }
@@ -337,7 +360,7 @@ struct PickerView: View {
         if showPinnedOnly {
             items = items.filter { $0.isPinned }
         }
-        displayedItems = items
+        displayedItems = items.map { PickerDisplayedRow(from: $0) }
         if !displayedItems.contains(where: { $0.id == selectedID }) {
             selectedID = displayedItems.first?.id
         }
@@ -381,33 +404,33 @@ struct PickerView: View {
 
     private func commitSelection() {
         guard let id = selectedID,
-              let item = displayedItems.first(where: { $0.id == id }) else { return }
-        onSelect(item)
+              let live = store.item(for: id) else { return }
+        onSelect(live)
     }
 
     private func commitSelectionAsPlainText() {
         guard let id = selectedID,
-              let item = displayedItems.first(where: { $0.id == id }) else { return }
+              let live = store.item(for: id) else { return }
         let targetApp = NSWorkspace.shared.frontmostApplication
-        store.touch(item)
+        store.touch(live)
         onDismiss()
-        PasteService.shared.pasteAsPlainText(item: item, into: targetApp)
+        PasteService.shared.pasteAsPlainText(item: live, into: targetApp)
     }
 
     private func previewSelection() {
         guard let id = selectedID,
-              let item = displayedItems.first(where: { $0.id == id }) else { return }
-        previewItem(item)
+              let row = displayedItems.first(where: { $0.id == id }) else { return }
+        previewRow(row)
     }
 
-    private func previewItem(_ item: ClipboardItem) {
-        switch item.contentType {
+    private func previewRow(_ row: PickerDisplayedRow) {
+        switch row.contentType {
         case .image:
-            if let path = item.imageFilePath {
+            if let path = row.imageFilePath {
                 NSWorkspace.shared.open(URL(fileURLWithPath: path))
             }
         case .text:
-            guard let text = item.textValue else { return }
+            guard let text = row.textValue else { return }
             let previewDir = Self.previewDirectory()
             let tempURL = previewDir.appendingPathComponent(UUID().uuidString + ".txt")
             do {
@@ -449,13 +472,13 @@ struct PickerView: View {
     }
 
     @ViewBuilder
-    private func expandChevron(for item: ClipboardItem) -> some View {
+    private func expandChevron(for row: PickerDisplayedRow) -> some View {
         Button {
             withAnimation(.easeInOut(duration: 0.15)) {
-                expandedID = expandedID == item.id ? nil : item.id
+                expandedID = expandedID == row.id ? nil : row.id
             }
         } label: {
-            Image(systemName: expandedID == item.id ? "chevron.up" : "chevron.down")
+            Image(systemName: expandedID == row.id ? "chevron.up" : "chevron.down")
                 .font(.system(size: 9, weight: .medium))
                 .foregroundStyle(.tertiary)
                 .padding(6)
@@ -466,11 +489,38 @@ struct PickerView: View {
     private func selectByNumber(_ n: Int) {
         let index = n - 1
         guard displayedItems.indices.contains(index) else { return }
-        onSelect(displayedItems[index])
+        let id = displayedItems[index].id
+        if let live = store.item(for: id) { onSelect(live) }
     }
 }
 
 // MARK: - Picker list sync (also unit-tested)
+
+/// Value-type row data copied from `ClipboardItem` so SwiftUI never reads SwiftData
+/// properties on a model that was deleted or pruned (which faults fatally on disk).
+struct PickerDisplayedRow: Identifiable, Equatable {
+    let id: UUID
+    let contentType: ClipboardContentType
+    let textValue: String?
+    let ocrText: String?
+    let imageFilePath: String?
+    let sourceApp: String?
+    let sourceBundleId: String?
+    let isPinned: Bool
+    let createdAt: Date
+
+    init(from item: ClipboardItem) {
+        id = item.id
+        contentType = item.contentType
+        textValue = item.textValue
+        ocrText = item.ocrText
+        imageFilePath = item.imageFilePath
+        sourceApp = item.sourceApp
+        sourceBundleId = item.sourceBundleId
+        isPinned = item.isPinned
+        createdAt = item.createdAt
+    }
+}
 
 /// Refreshes displayed rows when `HistoryStore` changes while the picker is open.
 enum PickerListSync {
@@ -481,11 +531,13 @@ enum PickerListSync {
         previousSelection: UUID?,
         expandedID: UUID?,
         pinnedOnly: Bool = false
-    ) -> (items: [ClipboardItem], selectedID: UUID?, expandedID: UUID?) {
+    ) -> (items: [PickerDisplayedRow], selectedID: UUID?, expandedID: UUID?) {
         var fresh = store.allItems(matching: query)
         if pinnedOnly {
             fresh = fresh.filter { $0.isPinned }
         }
+
+        let rows = fresh.map { PickerDisplayedRow(from: $0) }
 
         let selectedID: UUID?
         if let id = previousSelection, fresh.contains(where: { $0.id == id }) {
@@ -501,7 +553,7 @@ enum PickerListSync {
             newExpanded = nil
         }
 
-        return (fresh, selectedID, newExpanded)
+        return (rows, selectedID, newExpanded)
     }
 }
 
@@ -554,7 +606,7 @@ private struct EditTextView: View {
 // MARK: - Row
 
 struct ClipboardItemRow: View {
-    let item: ClipboardItem
+    let row: PickerDisplayedRow
     var shortcutNumber: Int?
     var isSelected: Bool = false
     var isExpanded: Bool = false
@@ -587,7 +639,7 @@ struct ClipboardItemRow: View {
     }
 
     private var typeIcon: some View {
-        Image(systemName: item.contentType == .text ? "doc.text" : "photo")
+        Image(systemName: row.contentType == .text ? "doc.text" : "photo")
             .font(.system(size: 13))
             .foregroundStyle(.secondary)
             .frame(width: 18)
@@ -595,13 +647,13 @@ struct ClipboardItemRow: View {
 
     @ViewBuilder
     private var contentPreview: some View {
-        if item.contentType == .text, let text = item.textValue {
+        if row.contentType == .text, let text = row.textValue {
             Text(text)
                 .font(.system(size: 13))
                 .lineLimit(isExpanded ? nil : 2)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .animation(.easeInOut(duration: 0.15), value: isExpanded)
-        } else if item.contentType == .image, let path = item.imageFilePath {
+        } else if row.contentType == .image, let path = row.imageFilePath {
             let maxPts: CGFloat = isExpanded ? ThumbnailSize.expanded : ThumbnailSize.normal
             // Display height is independent of the source thumbnail size; keep
             // it linked to `maxPts` so the row geometry tracks the cache key.
@@ -619,7 +671,7 @@ struct ClipboardItemRow: View {
                         .fill(.secondary.opacity(0.15))
                         .frame(width: maxPts, height: displayHeight)
                 }
-                if let ocrText = item.ocrText, !ocrText.isEmpty {
+                if let ocrText = row.ocrText, !ocrText.isEmpty {
                     Text(ocrText)
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
@@ -635,19 +687,19 @@ struct ClipboardItemRow: View {
     private var metaInfo: some View {
         VStack(alignment: .trailing, spacing: 2) {
             HStack(spacing: 4) {
-                if item.isPinned {
+                if row.isPinned {
                     Image(systemName: "pin.fill")
                         .font(.system(size: 10))
                         .foregroundStyle(.orange)
                 }
-                if let app = item.sourceApp {
+                if let app = row.sourceApp {
                     Text(app)
                         .font(.system(size: 10))
                         .foregroundStyle(.tertiary)
                         .lineLimit(1)
                 }
             }
-            Text(item.createdAt, style: .relative)
+            Text(row.createdAt, style: .relative)
                 .font(.system(size: 10))
                 .foregroundStyle(.tertiary)
         }

@@ -1312,6 +1312,18 @@ final class DeletedItemSafetyTests: XCTestCase {
                        "The oldest item should have been pruned")
     }
 
+    func testItemForIdReturnsLiveModel() async {
+        let store = HistoryStore.makeForTesting()
+        let item = ClipboardItem(contentType: .text, textValue: "lookup")
+        store.insert(item)
+        let id = item.id
+        let found = store.item(for: id)
+        XCTAssertNotNil(found)
+        XCTAssertEqual(found?.textValue, "lookup")
+        store.delete(item)
+        XCTAssertNil(store.item(for: id))
+    }
+
     func testRefetchAfterInsertNeverReturnsStalePrunedItems() async {
         let store = HistoryStore.makeForTesting()
         let settings = AppSettings.shared
@@ -1340,6 +1352,206 @@ final class DeletedItemSafetyTests: XCTestCase {
             XCTAssertNotNil(item.textValue,
                             "Every item returned by allItems() must have accessible properties")
         }
+    }
+}
+
+// MARK: - Picker value rows, edit sheet contract, list sync after clear
+//
+// Covers the hardening where the picker uses `PickerDisplayedRow` (not live
+// `ClipboardItem` in rows) and the edit sheet keeps only value data so history
+// can be cleared while editing without touching deleted SwiftData models.
+
+@MainActor
+final class PickerRowAndEditFlowTests: XCTestCase {
+    func testPickerDisplayedRowCopiesAllFieldsFromModel() {
+        let created = Date(timeIntervalSince1970: 1_700_000_000)
+        let item = ClipboardItem(
+            id: UUID(),
+            createdAt: created,
+            sourceApp: "Safari",
+            sourceBundleId: "com.apple.Safari",
+            contentType: .text,
+            textValue: "hello",
+            ocrText: nil,
+            isPinned: true
+        )
+        let row = PickerDisplayedRow(from: item)
+        XCTAssertEqual(row.id, item.id)
+        XCTAssertEqual(row.createdAt, created)
+        XCTAssertEqual(row.sourceApp, "Safari")
+        XCTAssertEqual(row.sourceBundleId, "com.apple.Safari")
+        XCTAssertEqual(row.contentType, .text)
+        XCTAssertEqual(row.textValue, "hello")
+        XCTAssertNil(row.ocrText)
+        XCTAssertNil(row.imageFilePath)
+        XCTAssertTrue(row.isPinned)
+    }
+
+    func testPickerDisplayedRowEquatable() {
+        let item = ClipboardItem(contentType: .text, textValue: "same")
+        let a = PickerDisplayedRow(from: item)
+        let b = PickerDisplayedRow(from: item)
+        XCTAssertEqual(a, b)
+
+        let other = ClipboardItem(contentType: .text, textValue: "different")
+        XCTAssertNotEqual(a, PickerDisplayedRow(from: other))
+    }
+
+    /// Mirrors `TextEditSession` + save: only row snapshot metadata is needed after the
+    /// source row was removed from the store (e.g. Clear All while the sheet is open).
+    func testEditSaveUsesSnapshotMetadataAfterOriginalItemDeleted() async {
+        let store = HistoryStore.makeForTesting()
+        let original = ClipboardItem(
+            sourceApp: "Notes",
+            sourceBundleId: "com.apple.Notes",
+            contentType: .text,
+            textValue: "before"
+        )
+        store.insert(original)
+        let row = PickerDisplayedRow(from: original)
+        let originalId = original.id
+
+        store.delete(original)
+        XCTAssertNil(store.item(for: originalId))
+
+        let savedText = "after edit"
+        let newItem = ClipboardItem(
+            sourceApp: row.sourceApp,
+            sourceBundleId: row.sourceBundleId,
+            contentType: .text,
+            textValue: savedText
+        )
+        store.insert(newItem)
+
+        let all = store.allItems()
+        XCTAssertEqual(all.count, 1)
+        XCTAssertEqual(all.first?.textValue, savedText)
+        XCTAssertEqual(all.first?.sourceApp, "Notes")
+        XCTAssertEqual(all.first?.sourceBundleId, "com.apple.Notes")
+    }
+
+    func testPickerListSyncAfterDeleteAllEmptiesRowsAndClearsSelection() async {
+        let store = HistoryStore.makeForTesting()
+        store.insert(ClipboardItem(contentType: .text, textValue: "only"))
+        let previousId = store.allItems().first!.id
+
+        store.deleteAll()
+
+        let (items, selectedID, expandedID) = PickerListSync.snapshot(
+            store: store,
+            matching: "",
+            previousSelection: previousId,
+            expandedID: previousId
+        )
+        XCTAssertTrue(items.isEmpty)
+        XCTAssertNil(selectedID)
+        XCTAssertNil(expandedID)
+    }
+
+    func testPickerListSyncRowsMatchStoreAfterPrune() async {
+        let store = HistoryStore.makeForTesting()
+        let settings = AppSettings.shared
+        let originalLimit = settings.historyCountLimit
+        settings.historyCountLimit = 2
+        defer { settings.historyCountLimit = originalLimit }
+
+        store.insert(ClipboardItem(
+            createdAt: Date(timeIntervalSince1970: 1),
+            contentType: .text,
+            textValue: "old"
+        ))
+        store.insert(ClipboardItem(
+            createdAt: Date(timeIntervalSince1970: 2),
+            contentType: .text,
+            textValue: "mid"
+        ))
+        store.insert(ClipboardItem(
+            createdAt: Date(timeIntervalSince1970: 3),
+            contentType: .text,
+            textValue: "new"
+        ))
+
+        let (rows, _, _) = PickerListSync.snapshot(
+            store: store,
+            matching: "",
+            previousSelection: nil,
+            expandedID: nil
+        )
+        let storeIds = Set(store.allItems().map(\.id))
+        XCTAssertEqual(Set(rows.map(\.id)), storeIds)
+        XCTAssertFalse(rows.contains { $0.textValue == "old" })
+    }
+}
+
+// MARK: - ImageProcessor capture (TIFF bridge + detached processing)
+
+@MainActor
+final class ImageProcessorCaptureTests: XCTestCase {
+    func testProcessCaptureWritesImageItemAndFile() async throws {
+        let image = NSImage(size: NSSize(width: 8, height: 8))
+        image.lockFocus()
+        NSColor.cyan.setFill()
+        NSBezierPath(rect: NSRect(origin: .zero, size: image.size)).fill()
+        image.unlockFocus()
+
+        let item = await ImageProcessor.shared.processCapture(
+            image: image,
+            sourceApp: "cpManTests",
+            sourceBundleId: "com.cpman.tests"
+        )
+
+        XCTAssertNotNil(item, "processCapture must succeed for a small bitmap with default settings")
+        guard let item else { return }
+
+        XCTAssertEqual(item.contentType, .image)
+        XCTAssertEqual(item.sourceApp, "cpManTests")
+        XCTAssertEqual(item.sourceBundleId, "com.cpman.tests")
+        XCTAssertNotNil(item.imageHash)
+        XCTAssertGreaterThan(item.imageWidth ?? 0, 0)
+        XCTAssertGreaterThan(item.imageHeight ?? 0, 0)
+
+        let path = try XCTUnwrap(item.imageFilePath)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: path))
+        addTeardownBlock {
+            try? FileManager.default.removeItem(atPath: path)
+        }
+    }
+}
+
+// MARK: - ThumbnailCache async decode (main-actor NSImage boundary)
+
+@MainActor
+final class ThumbnailCacheAsyncTests: XCTestCase {
+    func testThumbnailAsyncReturnsDecodedImage() async throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cpman-async-thumb-\(UUID().uuidString).png")
+        try ThumbnailCacheAsyncTests.makeTinyPNG(at: url)
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: url)
+            ThumbnailCache.shared.evict(for: url.path)
+        }
+
+        let img = await ThumbnailCache.shared.thumbnailAsync(for: url.path, maxPoints: ThumbnailSize.normal)
+        XCTAssertNotNil(img)
+        XCTAssertGreaterThan(img?.size.width ?? 0, 0)
+    }
+
+    private static func makeTinyPNG(at url: URL) throws {
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: 4,
+            pixelsHigh: 4,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ),
+        let data = rep.representation(using: .png, properties: [:])
+        else { throw NSError(domain: "ThumbnailCacheAsyncTests", code: 1) }
+        try data.write(to: url)
     }
 }
 

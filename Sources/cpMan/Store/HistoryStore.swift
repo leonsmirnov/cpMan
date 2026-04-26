@@ -136,6 +136,14 @@ final class HistoryStore: ObservableObject {
         (try? container.mainContext.fetchCount(FetchDescriptor<ClipboardItem>())) ?? 0
     }
 
+    /// Resolves a live model for UI actions. Returns nil if the row was pruned or deleted.
+    func item(for id: UUID) -> ClipboardItem? {
+        let descriptor = FetchDescriptor<ClipboardItem>(
+            predicate: #Predicate<ClipboardItem> { $0.id == id }
+        )
+        return try? container.mainContext.fetch(descriptor).first
+    }
+
     // MARK: - Pruning
 
     /// Mutates the context to satisfy count/age/size limits. Does NOT save and

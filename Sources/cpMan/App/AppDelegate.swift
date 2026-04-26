@@ -16,9 +16,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // prompt:true registers this binary in the TCC list (System Settings →
         // Privacy & Security → Accessibility) on every launch.  Without this call
         // the entry may not appear in the list at all, forcing the user to add it
-        // manually with "+".  On macOS 13+ the call is silent (no dialog box);
+        // manually with "+".  On macOS 13+ the call is often silent (no dialog box);
         // the picker banner then guides the user to flip the toggle.
-        AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary)
+        //
+        // Unit tests use cpMan as TEST_HOST, so the full app launches for every test
+        // run — `prompt: true` would spam the Accessibility dialog. Skip the prompt
+        // in that process; `AccessibilityService` still reads trust with `prompt: false`.
+        let isTestHost = NSClassFromString("XCTestCase") != nil
+        let axPrompt = !isTestHost
+        AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": axPrompt] as CFDictionary)
+        if isTestHost {
+            logger.debug("Test host: skipped Accessibility prompt on launch")
+        }
 
         if AccessibilityService.shared.isGranted {
             logger.info("Accessibility permission: granted")

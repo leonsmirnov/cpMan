@@ -62,7 +62,7 @@ Auto-paste works by simulating `⌘V` into the app you were using before opening
 1. Open the cpMan picker (`⌃⌥V`) — an orange banner appears at the top
 2. Click **"Open Settings"** in the banner — System Settings opens at the Accessibility pane
 3. **If cpMan is in the list** → toggle it **ON**
-4. **If cpMan is not in the list** → click **`+`** at the bottom of the list, navigate to your Applications folder, select **cpMan**, and click Open
+4. **If cpMan is not in the list** → click **`+`**. The picker usually starts in the **system** Applications folder (`/Applications`). If you installed from the DMG or install script, cpMan is often under **your user** Applications folder instead: in the open sheet press **`⌘⇧G`** (Go to Folder), enter **`~/Applications`**, press Return, select **cpMan.app**, then **Open**. If you dragged the app to the main Applications folder, look under **`/Applications`**.
 5. Switch back to cpMan — the banner disappears automatically once access is detected
 
 > You can also go through these steps any time via **Settings → General → Accessibility Permission → Open Settings…**
