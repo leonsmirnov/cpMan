@@ -163,29 +163,6 @@ Open **Settings → Images** to configure:
 
 ---
 
-## Building from Source
-
-Requires Xcode 16+ and [XcodeGen](https://github.com/yonaskolb/XcodeGen).
-
-```bash
-# Install XcodeGen if you don't have it
-brew install xcodegen
-
-# Clone and generate the Xcode project
-git clone https://github.com/your-username/cpMan.git
-cd cpMan
-xcodegen generate
-
-# Open in Xcode
-open cpMan.xcodeproj
-```
-
-Press `⌘B` to build. The app is automatically copied to `~/Applications/cpMan.app`.
-
-Grant Accessibility permission once (see [Permissions](#permissions) above) — it persists across all future builds.
-
----
-
 ## License
 
 MIT License — Copyright © 2026

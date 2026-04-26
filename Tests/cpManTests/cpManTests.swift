@@ -1261,6 +1261,88 @@ final class PickerListSyncPinnedFilterTests: XCTestCase {
     }
 }
 
+// MARK: - Deleted model object safety
+//
+// On a disk-backed store, accessing properties on a deleted-and-saved SwiftData
+// model object triggers a fatal assertion (the backing row is gone). These tests
+// verify that the store never returns such items after deletion or pruning, which
+// is the contract that PickerView relies on to avoid the crash.
+
+@MainActor
+final class DeletedItemSafetyTests: XCTestCase {
+    func testAllItemsExcludesDeletedItem() async {
+        let store = HistoryStore.makeForTesting()
+        let keep = ClipboardItem(contentType: .text, textValue: "keep")
+        let drop = ClipboardItem(contentType: .text, textValue: "drop")
+        store.insert(keep)
+        store.insert(drop)
+
+        store.delete(drop)
+
+        let remaining = store.allItems()
+        XCTAssertEqual(remaining.count, 1, "Deleted item must not appear in allItems()")
+        XCTAssertEqual(remaining.first?.textValue, "keep")
+    }
+
+    func testAllItemsExcludesPrunedItems() async {
+        let store = HistoryStore.makeForTesting()
+        let settings = AppSettings.shared
+
+        let originalLimit = settings.historyCountLimit
+        settings.historyCountLimit = 2
+        defer { settings.historyCountLimit = originalLimit }
+
+        store.insert(ClipboardItem(
+            createdAt: Date(timeIntervalSinceNow: -30),
+            contentType: .text, textValue: "oldest"
+        ))
+        store.insert(ClipboardItem(
+            createdAt: Date(timeIntervalSinceNow: -10),
+            contentType: .text, textValue: "middle"
+        ))
+        store.insert(ClipboardItem(
+            createdAt: Date(),
+            contentType: .text, textValue: "newest"
+        ))
+
+        let remaining = store.allItems()
+        XCTAssertLessThanOrEqual(remaining.count, 2,
+                                 "Pruned items must not appear in allItems()")
+        XCTAssertFalse(remaining.contains { $0.textValue == "oldest" },
+                       "The oldest item should have been pruned")
+    }
+
+    func testRefetchAfterInsertNeverReturnsStalePrunedItems() async {
+        let store = HistoryStore.makeForTesting()
+        let settings = AppSettings.shared
+
+        let originalLimit = settings.historyCountLimit
+        settings.historyCountLimit = 3
+        defer { settings.historyCountLimit = originalLimit }
+
+        for i in 1...3 {
+            store.insert(ClipboardItem(
+                createdAt: Date(timeIntervalSinceNow: Double(i)),
+                contentType: .text, textValue: "item \(i)"
+            ))
+        }
+        XCTAssertEqual(store.allItems().count, 3)
+
+        // This insert triggers pruning; a fresh fetch must only return valid items
+        store.insert(ClipboardItem(
+            createdAt: Date(timeIntervalSinceNow: 100),
+            contentType: .text, textValue: "trigger"
+        ))
+
+        let afterPrune = store.allItems()
+        XCTAssertLessThanOrEqual(afterPrune.count, 3)
+        for item in afterPrune {
+            XCTAssertNotNil(item.textValue,
+                            "Every item returned by allItems() must have accessible properties")
+        }
+    }
+}
+
 // MARK: - Helpers
 
 /// Expose internal `intOrDefault` to tests without adding test-only API surface to AppSettings.

@@ -24,7 +24,6 @@ struct PickerView: View {
     @State private var searchText    = ""
     @State private var debouncedQuery = ""
     @State private var debounceTask:  Task<Void, Never>?
-    @State private var syncTask: Task<Void, Never>?
     @State private var showPinnedOnly = false
 
     /// Snapshot of the history list for the current picker session.
@@ -82,16 +81,13 @@ struct PickerView: View {
         .onAppear { reload() }
         .onReceive(refreshPublisher ?? Empty().eraseToAnyPublisher()) { _ in reload() }
         .onReceive(store.objectWillChange) { _ in
-            syncTask?.cancel()
-            syncTask = Task {
-                try? await Task.sleep(for: .milliseconds(100))
-                guard !Task.isCancelled else { return }
-                syncDisplayedItemsFromStore()
-            }
+            // Sync immediately — a delay would leave stale SwiftData references
+            // in displayedItems; accessing properties on a deleted model object
+            // (e.g. one removed by pruning) causes a fatal SwiftData assertion.
+            syncDisplayedItemsFromStore()
         }
         .onDisappear {
             debounceTask?.cancel()
-            syncTask?.cancel()
         }
         // Refresh displayed list whenever the debounced query or filter settles.
         .onChange(of: debouncedQuery) { _, _ in updateDisplayedItems() }
