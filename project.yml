@@ -21,27 +21,6 @@ targets:
           - Resources/**
     resources:
       - path: Sources/cpMan/Resources
-    postBuildScripts:
-      - name: "Install to ~/Applications (stable AX permission path)"
-        # Avoid “will run every build” / dependency-analysis warning; this phase is
-        # intentionally unconditional for Debug (see script body).
-        basedOnDependencyAnalysis: false
-        inputFiles:
-          - "$(BUILT_PRODUCTS_DIR)/$(FULL_PRODUCT_NAME)/Contents/MacOS/$(PRODUCT_NAME)"
-        script: |
-          if [ "$CONFIGURATION" != "Debug" ]; then
-            echo "ℹ️ Skipping install: configuration is $CONFIGURATION"
-            exit 0
-          fi
-          DEST="$HOME/Applications"
-          mkdir -p "$DEST"
-          APP="${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}"
-          rm -rf "$DEST/${FULL_PRODUCT_NAME}"
-          cp -R "$APP" "$DEST/"
-          # Remove quarantine so macOS launches it without Gatekeeper prompts.
-          # No need to re-sign — Xcode already signed with a stable developer certificate.
-          xattr -cr "$DEST/${FULL_PRODUCT_NAME}"
-          echo "✅ Installed ${FULL_PRODUCT_NAME} → $DEST"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.cpman.app
@@ -87,6 +66,11 @@ schemes:
       targets:
         cpMan: all
         cpManTests: [test]
+      postActions:
+        - name: "Debug → /Applications; hide DerivedData from Launchpad"
+          script: |
+            /bin/bash "${SRCROOT}/scripts/finish-debug-install-to-applications.sh"
+          settingsTarget: cpMan
     test:
       targets:
         - cpManTests

@@ -11,10 +11,10 @@ private let logger = Logger(subsystem: "com.cpman.app", category: "PasteService"
 ///
 /// The reliable development workflow:
 ///   1. Build once (⌘B in Xcode).
-///   2. The post-build script copies the app to ~/Applications/cpMan.app.
-///   3. Launch from ~/Applications (Spotlight or Finder).
-///   4. Grant Accessibility to ~/Applications/cpMan.app — once, ever.
-///   5. Future builds overwrite the same ~/Applications copy; TCC keeps the grant.
+///   2. The post-build script copies the app to /Applications/cpMan.app.
+///   3. Launch from /Applications (Spotlight or Finder).
+///   4. Grant Accessibility for that app — once per stable path.
+///   5. Future builds overwrite the same /Applications copy; TCC keeps the grant.
 @MainActor
 final class PasteService {
     static let shared = PasteService()
@@ -46,7 +46,7 @@ final class PasteService {
         writeToPasteboard(item: item)
 
         guard axGranted else {
-            NSLog("[cpMan] paste BLOCKED — Accessibility not granted. Launch from ~/Applications and grant AX once.")
+            NSLog("[cpMan] paste BLOCKED — Accessibility not granted. Launch from /Applications and grant AX once.")
             logger.warning("Paste blocked: Accessibility not granted")
             return
         }

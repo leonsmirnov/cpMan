@@ -1,6 +1,6 @@
 #!/bin/bash
 # If you see 3× “cpMan” in Spotlight / Launchpad, they are usually:
-#   1) ~/Applications/cpMan.app  (keep)
+#   1) /Applications/cpMan.app  (canonical install)
 #   2) Xcode Debug under ~/Library/Developer/Xcode/DerivedData/cpMan-*
 #   3) Release under <repo>/build/DerivedData/…
 #

@@ -10,13 +10,13 @@ if [ ! -f "$PBXPROJ" ]; then
 fi
 
 # Find the UUID of the Install script phase and add alwaysOutOfDate = 1
-if grep -q "Install to ~/Applications" "$PBXPROJ"; then
+if grep -q "Install Debug build to /Applications" "$PBXPROJ"; then
   # Insert alwaysOutOfDate = 1 right before the shellScript line
-  sed -i '' '/Install to ~\/Applications.*\*\/ = {/{
+  sed -i '' '/Install Debug build to \/Applications.*\*\/ = {/{
     n; n; n
     /alwaysOutOfDate/! s/^\(\s*\)name/\1alwaysOutOfDate = 1;\n\1name/
   }' "$PBXPROJ"
   echo "✅ Patched pbxproj — build script will now always run"
 else
-  echo "❌ Install script phase not found in pbxproj"
+  echo "ℹ️ No “Install Debug…” build phase — install runs via scheme post-action (see project.yml)"
 fi

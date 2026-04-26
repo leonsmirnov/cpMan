@@ -1,11 +1,14 @@
 #!/bin/bash
 # 1) Remove all previous cpMan.app installs
 # 2) Build Release (ad-hoc signed, CI-style)
-# 3) Create dist/cpMan-local-YYYY-MM-DD.dmg
-# 4) Install exactly one copy to ~/Applications
+# 3) Create dist/cpMan-local-YYYY-MM-DD-HHMM.dmg
+# 4) Install exactly one copy to /Applications (all users on this Mac)
 #
 # Usage (from repo root):
 #   ./scripts/build-release-dmg-and-install.sh
+#
+# Requires permission to write /Applications (admin users can usually `cp` there;
+# if this fails, run from Terminal with sufficient privileges).
 
 set -euo pipefail
 
@@ -77,8 +80,8 @@ create-dmg \
   "$DMG_PATH" \
   "$APP"
 
-echo "Installing to ~/Applications (single copy)…"
-DEST="${HOME}/Applications"
+echo "Installing to /Applications (single system-wide copy)…"
+DEST="/Applications"
 mkdir -p "$DEST"
 
 # Typical line: /dev/disk5s2	Apple_HFS	/Volumes/cpMan
@@ -97,21 +100,19 @@ rm -rf "${DEST}/cpMan.app"
 cp -R "${MOUNT}/cpMan.app" "$DEST/"
 xattr -cr "${DEST}/cpMan.app"
 
-# Single install location: README recommends ~/Applications for a stable Accessibility
-# grant. A second copy under /Applications (e.g. from dragging the DMG there) shows
-# up as two “cpMan” apps in Finder / Spotlight — remove the system one.
-if [ -d "/Applications/cpMan.app" ]; then
-  echo "Removing duplicate /Applications/cpMan.app (keeping ~/Applications only)…"
-  rm -rf "/Applications/cpMan.app"
+# Avoid two entries: legacy per-user install.
+if [ -d "${HOME}/Applications/cpMan.app" ]; then
+  echo "Removing duplicate ${HOME}/Applications/cpMan.app (canonical install is /Applications)…"
+  rm -rf "${HOME}/Applications/cpMan.app"
 fi
 
 echo ""
 echo "✅ DMG: $DMG_PATH"
 echo "✅ Installed: ${DEST}/cpMan.app"
-echo "   Launch from there (stable Accessibility path)."
+echo "   Grant Accessibility for this path in System Settings (⌘⇧G → /Applications if needed)."
 
 # Command-line Release output lives here; without removal Spotlight keeps listing it
-# as a second “app” next to ~/Applications.
+# as a second “app” next to /Applications.
 if [ -d "${ROOT}/build/DerivedData" ]; then
   echo "Removing ${ROOT}/build/DerivedData (avoids duplicate cpMan in Spotlight)…"
   rm -rf "${ROOT}/build/DerivedData"

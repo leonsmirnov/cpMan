@@ -37,7 +37,7 @@ struct GeneralSettingsView: View {
                         Text("Click \"Open Settings…\" to go directly to the Accessibility pane, then:")
                         Text("• If cpMan is in the list → toggle it **ON**")
                         Text("• If cpMan is **not** in the list → click **+**. The sheet often opens **Macintosh HD → Applications**, but installs from our DMG / script live in **your** Applications folder instead.")
-                        Text("In that file sheet press **⌘⇧G** (Go to Folder), type **~/Applications**, press Return, select **cpMan**, then Open. (If you moved it to the main Applications folder, look under **/Applications** instead.)")
+                        Text("In that file sheet press **⌘⇧G** (Go to Folder), type **/Applications**, press Return, select **cpMan**, then Open. (If you use a copy under your home folder, try **~/Applications**.)")
                         Text("The status above updates automatically once access is granted.")
                     }
                     .font(.footnote)

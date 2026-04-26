@@ -563,6 +563,43 @@ final class PickerListSyncTests: XCTestCase {
     }
 }
 
+// MARK: - Picker keyboard navigation (clamped, no wrap)
+
+final class PickerKeyboardNavigationTests: XCTestCase {
+    func testEmptyListReturnsNil() {
+        XCTAssertNil(PickerKeyboardNavigation.clampedIndex(currentIndex: 0, delta: -1, itemCount: 0))
+    }
+
+    func testUpOnFirstRowStaysAtZero() {
+        XCTAssertEqual(PickerKeyboardNavigation.clampedIndex(currentIndex: 0, delta: -1, itemCount: 100), 0)
+    }
+
+    func testDownOnLastRowStaysAtLast() {
+        XCTAssertEqual(PickerKeyboardNavigation.clampedIndex(currentIndex: 99, delta: 1, itemCount: 100), 99)
+    }
+
+    func testDownFromFirstMovesToSecond() {
+        XCTAssertEqual(PickerKeyboardNavigation.clampedIndex(currentIndex: 0, delta: 1, itemCount: 5), 1)
+    }
+
+    func testUpFromLastMovesToPenultimate() {
+        XCTAssertEqual(PickerKeyboardNavigation.clampedIndex(currentIndex: 4, delta: -1, itemCount: 5), 3)
+    }
+
+    func testSingleItemUpAndDownStayAtZero() {
+        XCTAssertEqual(PickerKeyboardNavigation.clampedIndex(currentIndex: 0, delta: -1, itemCount: 1), 0)
+        XCTAssertEqual(PickerKeyboardNavigation.clampedIndex(currentIndex: 0, delta: 1, itemCount: 1), 0)
+    }
+
+    /// Regression: modulo wrap would jump first → last on long lists.
+    func testUpOnFirstDoesNotWrapToLastOnLongList() {
+        let count = 10_000
+        let idx = PickerKeyboardNavigation.clampedIndex(currentIndex: 0, delta: -1, itemCount: count)
+        XCTAssertEqual(idx, 0)
+        XCTAssertNotEqual(idx, count - 1)
+    }
+}
+
 // MARK: - ClipboardMonitor predicates
 
 final class ClipboardMonitorPredicateTests: XCTestCase {

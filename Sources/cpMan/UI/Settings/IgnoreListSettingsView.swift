@@ -15,8 +15,12 @@ struct IgnoreListSettingsView: View {
                 ForEach(settings.ignoredBundleIds, id: \.self) { bundleId in
                     IgnoredAppRow(bundleId: bundleId)
                 }
+                // macOS rarely surfaces swipe/delete for `List`; rows use an explicit Remove control.
                 .onDelete { indexSet in
-                    settings.ignoredBundleIds.remove(atOffsets: indexSet)
+                    for i in indexSet {
+                        let id = settings.ignoredBundleIds[i]
+                        IgnoreListService.shared.remove(bundleId: id)
+                    }
                 }
             }
             .frame(minHeight: 180)
@@ -41,6 +45,10 @@ struct IgnoredAppRow: View {
         NSRunningApplication.runningApplications(withBundleIdentifier: bundleId).first
     }
 
+    private var displayName: String {
+        runningApp?.localizedName ?? bundleId
+    }
+
     var body: some View {
         HStack(spacing: 8) {
             if let icon = runningApp?.icon {
@@ -53,11 +61,25 @@ struct IgnoredAppRow: View {
                     .foregroundStyle(.secondary)
             }
             VStack(alignment: .leading, spacing: 1) {
-                Text(runningApp?.localizedName ?? bundleId)
+                Text(displayName)
                     .font(.system(size: 13))
                 Text(bundleId)
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
+            }
+            Spacer(minLength: 8)
+            Button("Remove") {
+                IgnoreListService.shared.remove(bundleId: bundleId)
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
+            .controlSize(.small)
+            .help("Remove this app from the ignore list")
+            .accessibilityLabel("Remove \(displayName) from ignore list")
+        }
+        .contextMenu {
+            Button("Remove from Ignore List") {
+                IgnoreListService.shared.remove(bundleId: bundleId)
             }
         }
     }

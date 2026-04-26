@@ -1,5 +1,5 @@
 #!/bin/bash
-# reinstall.sh — run this after every Xcode build to update ~/Applications/cpMan.app
+# reinstall.sh — run this after every Xcode build to update /Applications/cpMan.app
 # and re-grant Accessibility permission.
 #
 # Usage:
@@ -7,7 +7,7 @@
 #
 # What it does:
 #   1. Finds the latest Debug build in DerivedData
-#   2. Copies it to ~/Applications
+#   2. Copies it to /Applications (all users on this Mac)
 #   3. Re-signs with ad-hoc signature so macOS will launch it
 #   4. Resets and re-grants Accessibility permission
 #   5. Opens the app
@@ -23,11 +23,11 @@ fi
 
 echo "📦 Found build: $APP"
 
-# Copy to ~/Applications
-DEST="$HOME/Applications"
+DEST="/Applications"
 mkdir -p "$DEST"
 rm -rf "$DEST/cpMan.app"
 cp -R "$APP" "$DEST/"
+rm -rf "$HOME/Applications/cpMan.app"
 echo "✅ Copied to $DEST/cpMan.app"
 
 # Sign and clear quarantine

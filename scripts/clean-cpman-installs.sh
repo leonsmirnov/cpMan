@@ -1,6 +1,7 @@
 #!/bin/bash
 # Remove every installed cpMan.app we know about so you do not end up with
-# multiple copies (~/Applications, /Applications, stray drags from DMG, etc.).
+# multiple copies. Release + DMG install target is /Applications (all users);
+# we also remove ~/Applications and other stray copies from older installs.
 #
 # Usage: ./scripts/clean-cpman-installs.sh
 
@@ -27,7 +28,7 @@ remove_app_at() {
 
 unmount_dmg_volume
 
-# Primary install locations (README / AX path)
+# Canonical install: /Applications. Also clear legacy ~/Applications copy.
 remove_app_at "${HOME}/Applications/cpMan.app"
 remove_app_at "/Applications/cpMan.app"
 

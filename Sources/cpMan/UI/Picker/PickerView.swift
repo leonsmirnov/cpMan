@@ -144,7 +144,7 @@ struct PickerView: View {
                         .font(.system(size: 11, weight: .medium))
                     Text("• If cpMan is in the list → toggle it **ON**")
                         .font(.system(size: 11))
-                    Text("• If **+** does not show cpMan: in the file sheet press **⌘⇧G**, type **~/Applications**, select **cpMan** (or try **/Applications** if you installed there).")
+                    Text("• If **+** does not show cpMan: in the file sheet press **⌘⇧G**, type **/Applications**, select **cpMan** (or **~/Applications** if that is where you installed).")
                         .font(.system(size: 11))
                 }
                 .foregroundStyle(.secondary)
@@ -398,7 +398,11 @@ struct PickerView: View {
     private func moveSelection(_ delta: Int) {
         guard !displayedItems.isEmpty else { return }
         let currentIndex = displayedItems.firstIndex(where: { $0.id == selectedID }) ?? 0
-        let newIndex = (currentIndex + delta + displayedItems.count) % displayedItems.count
+        guard let newIndex = PickerKeyboardNavigation.clampedIndex(
+            currentIndex: currentIndex,
+            delta: delta,
+            itemCount: displayedItems.count
+        ) else { return }
         selectedID = displayedItems[newIndex].id
     }
 
@@ -491,6 +495,18 @@ struct PickerView: View {
         guard displayedItems.indices.contains(index) else { return }
         let id = displayedItems[index].id
         if let live = store.item(for: id) { onSelect(live) }
+    }
+}
+
+// MARK: - Keyboard navigation (unit-tested)
+
+/// Arrow-key movement in the history list: **clamped** indices only (no wrap from
+/// first row up to the last row, which is confusing on long lists).
+enum PickerKeyboardNavigation {
+    static func clampedIndex(currentIndex: Int, delta: Int, itemCount: Int) -> Int? {
+        guard itemCount > 0 else { return nil }
+        let raw = currentIndex + delta
+        return min(max(0, raw), itemCount - 1)
     }
 }
 
