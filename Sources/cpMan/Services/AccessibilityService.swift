@@ -37,31 +37,23 @@ final class AccessibilityService: ObservableObject {
     /// True while a Secure Event Input app (e.g. a password field) has focus.
     var isSecureInputActive: Bool { IsSecureEventInputEnabled() }
 
-    /// Registers the app in the Accessibility list and opens System Settings so
-    /// the user can toggle the switch on.
+    /// Opens **System Settings → Privacy & Security → Accessibility** for the user.
     ///
-    /// Two steps are needed:
-    /// 1. `AXIsProcessTrustedWithOptions(prompt: true)` — adds THIS binary to the
-    ///    Accessibility list in System Settings. Without this call, cpMan might not
-    ///    appear in the list at all (especially after an Xcode rebuild which changes
-    ///    the binary's code signature).
-    /// 2. Open the direct URL — lands the user on the exact pane so they only need
-    ///    to find cpMan in the list and flip the toggle.
+    /// We intentionally do **not** call `AXIsProcessTrustedWithOptions(prompt: true)` here:
+    /// that API shows the legacy “Accessibility” / “Accessibility Access” dialog, and we
+    /// were *also* opening System Settings — so users saw two competing windows. Launch
+    /// already runs a trust check in `AppDelegate` to register this build with TCC; for
+    /// in-app “Open Settings” we only deep-link once.
     ///
     /// Schedules rechecks so the banner auto-hides as soon as the user grants access.
     func openAccessibilitySettings() {
-        // Step 1: register / prompt — ensures cpMan appears in the list
-        let options = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
-        AXIsProcessTrustedWithOptions(options)
+        AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": false] as CFDictionary)
 
-        // Step 2: open System Settings after a brief delay so step 1 can complete
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
-                NSWorkspace.shared.open(url)
-            }
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+            NSWorkspace.shared.open(url)
         }
 
-        logger.info("Accessibility settings opened (prompt + URL)")
+        logger.info("Opened System Settings → Accessibility (single window, no AX prompt)")
 
         // Rechecks at 2 s / 4 s / 8 s / 15 s cover the time the user spends in
         // System Settings toggling the switch and switching back to cpMan.

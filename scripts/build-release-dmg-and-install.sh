@@ -12,7 +12,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-DMG_NAME="cpMan-local-$(date +%Y-%m-%d).dmg"
+# Include time so repeated builds on the same day get distinct DMG names.
+DMG_NAME="cpMan-local-$(date +%Y-%m-%d-%H%M).dmg"
 DMG_PATH="dist/${DMG_NAME}"
 
 "$ROOT/scripts/clean-cpman-installs.sh"
@@ -25,10 +26,22 @@ echo "Generating Xcode project…"
 xcodegen generate
 "$ROOT/scripts/apply-xcode-workspace-settings.sh"
 
+echo "Cleaning Release build artifacts…"
+rm -rf "${ROOT}/build/DerivedData"
+mkdir -p "${ROOT}/build"
+touch "${ROOT}/build/.metadata_never_index"
+xcodebuild clean \
+  -project cpMan.xcodeproj \
+  -scheme cpMan \
+  -configuration Release \
+  -destination 'generic/platform=macOS' \
+  -derivedDataPath build/DerivedData \
+  -quiet || true
+
 echo "Resolving Swift packages…"
 xcodebuild -project cpMan.xcodeproj -resolvePackageDependencies -scheme cpMan -quiet
 
-echo "Building Release…"
+echo "Building Release (clean)…"
 set -o pipefail
 xcodebuild build \
   -project cpMan.xcodeproj \

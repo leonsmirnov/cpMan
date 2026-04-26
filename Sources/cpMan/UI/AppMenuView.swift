@@ -33,7 +33,8 @@ struct AppMenuView: View {
         Divider()
 
         Button("Settings…") {
-            NSApp.setActivationPolicy(.regular)
+            // Keep `.accessory` activation policy (see AppDelegate) so cpMan never
+            // appears in the Dock. Opening Settings only needs a focused app, not `.regular`.
             NSApp.activate(ignoringOtherApps: true)
             openSettings()
         }

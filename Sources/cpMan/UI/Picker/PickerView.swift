@@ -507,7 +507,6 @@ struct PickerDisplayedRow: Identifiable, Equatable {
     let sourceApp: String?
     let sourceBundleId: String?
     let isPinned: Bool
-    let createdAt: Date
 
     init(from item: ClipboardItem) {
         id = item.id
@@ -518,7 +517,6 @@ struct PickerDisplayedRow: Identifiable, Equatable {
         sourceApp = item.sourceApp
         sourceBundleId = item.sourceBundleId
         isPinned = item.isPinned
-        createdAt = item.createdAt
     }
 }
 
@@ -685,24 +683,19 @@ struct ClipboardItemRow: View {
     }
 
     private var metaInfo: some View {
-        VStack(alignment: .trailing, spacing: 2) {
-            HStack(spacing: 4) {
-                if row.isPinned {
-                    Image(systemName: "pin.fill")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.orange)
-                }
-                if let app = row.sourceApp {
-                    Text(app)
-                        .font(.system(size: 10))
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                }
+        HStack(spacing: 4) {
+            if row.isPinned {
+                Image(systemName: "pin.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.orange)
             }
-            Text(row.createdAt, style: .relative)
-                .font(.system(size: 10))
-                .foregroundStyle(.tertiary)
+            if let app = row.sourceApp {
+                Text(app)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
         }
-        .frame(width: 72, alignment: .trailing)
+        .frame(width: 88, alignment: .trailing)
     }
 }

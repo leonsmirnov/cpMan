@@ -1377,7 +1377,6 @@ final class PickerRowAndEditFlowTests: XCTestCase {
         )
         let row = PickerDisplayedRow(from: item)
         XCTAssertEqual(row.id, item.id)
-        XCTAssertEqual(row.createdAt, created)
         XCTAssertEqual(row.sourceApp, "Safari")
         XCTAssertEqual(row.sourceBundleId, "com.apple.Safari")
         XCTAssertEqual(row.contentType, .text)
