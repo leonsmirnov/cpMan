@@ -26,8 +26,8 @@ cp -R "$APP" "$DEST/"
 xattr -cr "${DEST}/${FULL_PRODUCT_NAME}"
 rm -rf "${HOME}/Applications/${FULL_PRODUCT_NAME}"
 
+# Never write files inside *.app — extra root files break the sealed bundle and CodeSign.
 touch "${DD_ROOT}/.metadata_never_index"
-touch "${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}/.metadata_never_index"
 
 lsreg_unregister() {
   [ -x "$LSREG" ] || return 0

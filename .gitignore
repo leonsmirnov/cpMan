@@ -1,6 +1,7 @@
 # Xcode build artifacts
 build/
 DerivedData/
+dist/
 *.xcuserstate
 *.xcworkspace/xcuserdata/
 *.xcodeproj/xcuserdata/
@@ -17,6 +18,8 @@ cpMan.xcodeproj/
 # macOS
 .DS_Store
 **/.DS_Store
+*.dmg
+
 
 # Logs / temp
 *.log

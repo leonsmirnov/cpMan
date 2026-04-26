@@ -4,10 +4,10 @@ import os.log
 
 private let logger = Logger(subsystem: "com.cpman.app", category: "PasteService")
 
-/// Writes a ClipboardItem back to NSPasteboard and simulates ⌘V in the target app.
+/// Writes a ClipboardItem back to NSPasteboard and simulates ⌘V in the target app via `CGEvent`.
 ///
-/// Requires Accessibility permission. Both CGEvent and AppleScript/System Events need it —
-/// there is no route around AX for cross-process keystroke synthesis on macOS.
+/// Requires Accessibility permission for cross-process keystroke synthesis (`postToPid` /
+/// session tap). cpMan does not send Apple Events to System Events or other apps for paste.
 ///
 /// The reliable development workflow:
 ///   1. Build once (⌘B in Xcode).

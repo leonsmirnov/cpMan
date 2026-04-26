@@ -33,8 +33,5 @@
     <!-- Describes why Accessibility permission is needed (shown in System Settings) -->
     <key>NSAccessibilityUsageDescription</key>
     <string>cpMan needs Accessibility access to simulate paste (⌘V) into the active app after you select a clipboard item.</string>
-    <!-- Describes why Automation access to System Events is needed -->
-    <key>NSAppleEventsUsageDescription</key>
-    <string>cpMan uses System Events to simulate ⌘V paste after you select a clipboard item.</string>
 </dict>
 </plist>
