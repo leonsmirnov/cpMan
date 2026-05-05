@@ -14,7 +14,7 @@ A fast, lightweight clipboard manager that lives in your menu bar. cpMan keeps a
 
 - **Clipboard history** — automatically captures text and images as you copy; the picker list updates live while it is open (no need to close and reopen)
 - **Instant search** — type to filter history in real time
-- **Auto-paste** — select an item and it pastes directly into whatever app you were using
+- **Auto-paste** — select an item and it pastes directly into whatever app you were using (permission required)
 - **Paste as plain text** — strips formatting; press ⌥Return or right-click any text item
 - **Keyboard navigation** — arrow keys to move, Enter to paste, Escape to close
 - **Quick select** — press 1–9 to instantly paste one of the first nine items
@@ -55,7 +55,7 @@ cpMan requires one permission to work fully.
 
 ### Accessibility (required for auto-paste)
 
-Auto-paste works by simulating `⌘V` into the app you were using before opening the picker. macOS requires Accessibility access for any app that synthesises key presses.
+Auto-paste works by simulating `⌘V` (configurable in Settings) into the app you were using before opening the picker. macOS requires Accessibility access for any app that synthesises key presses.
 
 **How to grant it:**
 
@@ -115,7 +115,7 @@ Click the cpMan icon in the menu bar and choose **Enable Private Mode**. A sub-m
 | 1 hour / 2 hours | Automatically resumes after the chosen time |
 | Until I Turn It Off | Stays active until you choose **Disable Private Mode** |
 
-The menu bar icon changes to a filled lock (``) while private mode is active. Your last-used duration is remembered and pre-selected next time.
+The menu bar icon changes to a filled lock while private mode is active. Your last-used duration is remembered and pre-selected next time.
 
 ---
 

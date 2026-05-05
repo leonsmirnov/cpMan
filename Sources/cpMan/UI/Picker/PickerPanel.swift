@@ -31,6 +31,10 @@ final class PickerPanel: NSPanel {
     /// the view already-appeared and skips onAppear on subsequent shows).
     private let refreshSubject = PassthroughSubject<Void, Never>()
 
+    /// Removed in `deinit` — stored as `nonisolated(unsafe)` so `deinit` can run without MainActor.
+    nonisolated(unsafe) private var resignKeyObserver: NSObjectProtocol?
+    nonisolated(unsafe) private var workspaceActivateObserver: NSObjectProtocol?
+
     init() {
         super.init(
             contentRect: NSRect(x: 0, y: 0, width: 440, height: 520),
@@ -63,6 +67,41 @@ final class PickerPanel: NSPanel {
         let hv = FirstMouseHostingView(rootView: view)
         typedHostingView = hv
         contentView = hv
+
+        // Close when the user clicks another window or switches apps (browse-only flow).
+        resignKeyObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didResignKeyNotification,
+            object: self,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.isVisible else { return }
+                self.close()
+            }
+        }
+
+        workspaceActivateObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            let activatedBundle = (notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?
+                .bundleIdentifier
+            Task { @MainActor [weak self] in
+                guard let self, self.isVisible else { return }
+                if activatedBundle == Bundle.main.bundleIdentifier { return }
+                self.close()
+            }
+        }
+    }
+
+    deinit {
+        if let resignKeyObserver {
+            NotificationCenter.default.removeObserver(resignKeyObserver)
+        }
+        if let workspaceActivateObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(workspaceActivateObserver)
+        }
     }
 
     // MARK: - Show / hide

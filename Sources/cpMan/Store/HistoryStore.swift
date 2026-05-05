@@ -73,6 +73,33 @@ final class HistoryStore: ObservableObject {
         logger.info("Deleted all history items")
     }
 
+    /// Replaces history with exactly these items **without** pruning. Removes existing rows
+    /// via `removeItem` (so image files are cleaned correctly) instead of `deleteAll()`, which
+    /// would wipe the Images directory and orphan a demo image written just before insert.
+    /// The next clipboard capture will prune as normal when over user limits.
+    func replaceEntireHistory(with items: [ClipboardItem]) {
+        let descriptor = FetchDescriptor<ClipboardItem>()
+        if let existing = try? container.mainContext.fetch(descriptor) {
+            existing.forEach { removeItem($0) }
+        }
+        for item in items {
+            container.mainContext.insert(item)
+        }
+        save()
+        objectWillChange.send()
+        logger.info("replaceEntireHistory: inserted \(items.count) items (no prune)")
+    }
+
+    /// Inserts many items then runs prune once (avoids per-row prune during bulk add).
+    func insertBatch(_ items: [ClipboardItem]) {
+        for item in items {
+            container.mainContext.insert(item)
+        }
+        _ = pruneIfNeeded()
+        save()
+        objectWillChange.send()
+    }
+
     func updateOCR(forId id: UUID, text: String) {
         let descriptor = FetchDescriptor<ClipboardItem>(
             predicate: #Predicate<ClipboardItem> { $0.id == id }

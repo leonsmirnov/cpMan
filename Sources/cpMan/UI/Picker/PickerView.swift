@@ -50,6 +50,9 @@ struct PickerView: View {
     @State private var textEditSession: TextEditSession? = nil
     @State private var editingText: String = ""
     @State private var expandedID: UUID? = nil
+    /// Bumped on every picker `reload()` so we scroll the list to `selectedID` even when the
+    /// id is unchanged (SwiftUI skips `onChange(of: selectedID)` if the value is the same).
+    @State private var scrollSelectionToVisibleTick: UInt = 0
 
     var body: some View {
         VStack(spacing: 0) {
@@ -334,9 +337,21 @@ struct PickerView: View {
             }
             .onChange(of: selectedID) { _, newID in
                 guard let newID else { return }
-                withAnimation(.easeInOut(duration: 0.1)) {
-                    proxy.scrollTo(newID, anchor: .center)
-                }
+                Self.scrollRowIntoView(id: newID, proxy: proxy, anchor: .center)
+            }
+            .onChange(of: scrollSelectionToVisibleTick) { _, _ in
+                guard let id = selectedID else { return }
+                // Defer so LazyVStack has laid out rows after `reload()` (same-frame scrollTo is a no-op).
+                Self.scrollRowIntoView(id: id, proxy: proxy, anchor: .center)
+            }
+        }
+    }
+
+    /// Schedules `scrollTo` on the next run-loop turn so `ScrollViewReader` targets exist.
+    private static func scrollRowIntoView(id: UUID, proxy: ScrollViewProxy, anchor: UnitPoint) {
+        DispatchQueue.main.async {
+            withAnimation(.easeInOut(duration: 0.12)) {
+                proxy.scrollTo(id, anchor: anchor)
             }
         }
     }
@@ -370,6 +385,10 @@ struct PickerView: View {
         searchText     = ""
         debouncedQuery = ""
         updateDisplayedItems()
+        // Keep the last navigated row (Escape / click-away) if it’s still in history — only
+        // `updateDisplayedItems` resets when that id is gone. Collapse rows; scroll into view.
+        expandedID = nil
+        scrollSelectionToVisibleTick &+= 1
 
         // First time the picker opens and auto-paste is on but AX not granted:
         // automatically open System Settings so the user only has to flip one toggle.
