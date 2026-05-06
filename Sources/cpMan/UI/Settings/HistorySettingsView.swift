@@ -86,7 +86,7 @@ struct HistorySettingsView: View {
                     }
                     Button("Cancel", role: .cancel) {}
                 } message: {
-                    Text("Prepends fictional demo clips (with one image on top) ahead of everything else. Your existing items stay below; count/size limits may still trim the oldest entries afterward.")
+                    Text("Prepends fictional demo clips (with one image on top) ahead of everything else. Your existing items stay below.")
                 }
             } header: {
                 Text("App Store snapshots")
