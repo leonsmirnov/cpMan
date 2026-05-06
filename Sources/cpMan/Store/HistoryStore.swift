@@ -92,10 +92,22 @@ final class HistoryStore: ObservableObject {
 
     /// Inserts many items then runs prune once (avoids per-row prune during bulk add).
     func insertBatch(_ items: [ClipboardItem]) {
+        insertBatch(items, shouldPrune: true)
+    }
+
+    /// Inserts many items without pruning existing history. Use for explicit demo/import flows
+    /// where deleting the user's current clipboard rows would be surprising.
+    func insertBatchWithoutPruning(_ items: [ClipboardItem]) {
+        insertBatch(items, shouldPrune: false)
+    }
+
+    private func insertBatch(_ items: [ClipboardItem], shouldPrune: Bool) {
         for item in items {
             container.mainContext.insert(item)
         }
-        _ = pruneIfNeeded()
+        if shouldPrune {
+            _ = pruneIfNeeded()
+        }
         save()
         objectWillChange.send()
     }

@@ -107,7 +107,7 @@ enum AppStoreDemoHistory {
                     isPinned: row.pinned
                 )
             }
-            store.insertBatch(textOnly)
+            store.insertBatchWithoutPruning(textOnly)
             return
         }
 
@@ -131,7 +131,7 @@ enum AppStoreDemoHistory {
         )
         all.append(imageItem)
 
-        store.insertBatch(all)
+        store.insertBatchWithoutPruning(all)
     }
 
     /// First timestamp in the new batch — strictly after the current MRU row so demos sort above prior history.

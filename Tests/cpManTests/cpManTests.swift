@@ -955,6 +955,38 @@ final class BatchPruningTests: XCTestCase {
                        "Only the two newest items should survive bulk pruning")
     }
 
+    func testNoPruneBatchInsertPreservesExistingItemsWhenOverLimit() async {
+        let store = HistoryStore.makeForTesting()
+
+        AppSettings.shared.historyCountLimit = 0
+        for i in 1...10 {
+            store.insert(ClipboardItem(
+                createdAt: Date(timeIntervalSince1970: Double(i)),
+                contentType: .text,
+                textValue: "existing \(i)"
+            ))
+        }
+
+        AppSettings.shared.historyCountLimit = 10
+        let demoItems = (1...10).map { i in
+            ClipboardItem(
+                createdAt: Date(timeIntervalSince1970: Double(100 + i)),
+                contentType: .text,
+                textValue: "demo \(i)"
+            )
+        }
+
+        store.insertBatchWithoutPruning(demoItems)
+
+        let allText = Set(store.allItems(fetchLimit: 25).compactMap(\.textValue))
+        XCTAssertEqual(allText.count, 20)
+        for i in 1...10 {
+            XCTAssertTrue(allText.contains("existing \(i)"),
+                          "Demo seeding must not prune existing history item \(i)")
+            XCTAssertTrue(allText.contains("demo \(i)"))
+        }
+    }
+
     func testDeleteAllFiresExactlyOneNotification() async {
         let store = HistoryStore.makeForTesting()
         // Use deterministic, monotonically increasing timestamps so the
