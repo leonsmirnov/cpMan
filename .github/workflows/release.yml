@@ -88,13 +88,37 @@ jobs:
             "${{ steps.app_path.outputs.path }}"
 
       - name: Upload DMG to Google Drive
-        uses: willo32/google-drive-upload-action@v1
-        with:
-          target: dist/cpMan-${{ steps.version.outputs.label }}.dmg
-          credentials: ${{ secrets.GDRIVE_CREDENTIALS }}
-          parent_folder_id: ${{ secrets.GDRIVE_FOLDER_ID }}
-          name: cpMan-${{ steps.version.outputs.label }}.dmg
-          child_folder: ${{ steps.version.outputs.label }}
+        run: |
+          pip install --quiet google-api-python-client google-auth
+          python3 << 'EOF'
+          import os, json
+          from google.oauth2 import service_account
+          from googleapiclient.discovery import build
+          from googleapiclient.http import MediaFileUpload
+
+          creds_info = json.loads(os.environ['GDRIVE_CREDENTIALS'])
+          folder_id  = os.environ['GDRIVE_FOLDER_ID']
+          version    = os.environ['VERSION_LABEL']
+          dmg_path   = f"dist/cpMan-{version}.dmg"
+
+          creds = service_account.Credentials.from_service_account_info(
+              creds_info,
+              scopes=['https://www.googleapis.com/auth/drive']
+          )
+          service = build('drive', 'v3', credentials=creds)
+
+          file_metadata = {
+              'name': f"cpMan-{version}.dmg",
+              'parents': [folder_id]
+          }
+          media = MediaFileUpload(dmg_path, mimetype='application/octet-stream', resumable=True)
+          f = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+          print(f"✅ Uploaded to Google Drive — file ID: {f.get('id')}")
+          EOF
+        env:
+          GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
+          GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+          VERSION_LABEL: ${{ steps.version.outputs.label }}
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
