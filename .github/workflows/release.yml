@@ -87,6 +87,15 @@ jobs:
             "dist/cpMan-${{ steps.version.outputs.label }}.dmg" \
             "${{ steps.app_path.outputs.path }}"
 
+      - name: Upload DMG to Google Drive
+        uses: adityak74/google-drive-upload-action@v0.4
+        with:
+          credentials: ${{ secrets.GDRIVE_CREDENTIALS }}
+          filename: dist/cpMan-${{ steps.version.outputs.label }}.dmg
+          folderId: ${{ secrets.GDRIVE_FOLDER_ID }}
+          name: cpMan-${{ steps.version.outputs.label }}.dmg
+          overwrite: "true"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
