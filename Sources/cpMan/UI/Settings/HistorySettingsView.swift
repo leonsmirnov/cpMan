@@ -4,8 +4,6 @@ struct HistorySettingsView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var store:    HistoryStore
     @State private var showingClearConfirm = false
-    @State private var showingDemoConfirm = false
-    @State private var isSeedingDemo = false
 
     var body: some View {
         Form {
@@ -61,37 +59,6 @@ struct HistorySettingsView: View {
                 Text(settings.historyAgeLimitEnabled
                      ? "Items older than \(settings.historyAgeLimitDays) day\(settings.historyAgeLimitDays == 1 ? "" : "s") are pruned on next capture."
                      : "Enable to automatically remove items older than a set number of days.")
-                    .foregroundStyle(.secondary)
-            }
-
-            Section {
-                Button {
-                    showingDemoConfirm = true
-                } label: {
-                    Label("Add App Store demo clips…", systemImage: "photo.on.rectangle.angled")
-                        .frame(maxWidth: .infinity, alignment: .center)
-                }
-                .disabled(isSeedingDemo)
-                .confirmationDialog(
-                    "Add App Store demo clips?",
-                    isPresented: $showingDemoConfirm,
-                    titleVisibility: .visible
-                ) {
-                    Button("Add Demo Clips") {
-                        Task { @MainActor in
-                            isSeedingDemo = true
-                            await AppStoreDemoHistory.appendDemoItemsForScreenshots(in: store)
-                            isSeedingDemo = false
-                        }
-                    }
-                    Button("Cancel", role: .cancel) {}
-                } message: {
-                    Text("Prepends fictional demo clips (with one image on top) ahead of everything else. Your existing items stay below; count/size limits may still trim the oldest entries afterward.")
-                }
-            } header: {
-                Text("App Store snapshots")
-            } footer: {
-                Text("Adds demo rows at the top of MRU; does not erase your clipboard history.")
                     .foregroundStyle(.secondary)
             }
 

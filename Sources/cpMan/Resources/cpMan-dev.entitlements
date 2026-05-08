@@ -14,7 +14,7 @@
         stable enough across rebuilds when running from /Applications.
 
         The Release configuration (cpMan-release.entitlements) enables the
-        sandbox as required by the Mac App Store.
+        sandbox as required by release distribution.
         ═══════════════════════════════════════════════════════════════════════
     -->
 

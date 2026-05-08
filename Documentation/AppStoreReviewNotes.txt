@@ -1,0 +1,63 @@
+App Store Review Notes — cpMan (macOS)
+========================================
+Paste the sections below into App Store Connect → App Review Information → Notes (or attach this file). Adjust dates/names if needed.
+
+────────────────────────────────────────
+1. What this app is
+────────────────────────────────────────
+cpMan is a menu bar clipboard manager for macOS. It records text and images you copy, keeps a searchable history, and lets you paste any previous item quickly via a floating picker and keyboard shortcuts.
+
+The app uses LSUIElement: it does NOT show a Dock icon or ⌘Tab entry by design. Access is from the menu bar (clipboard icon) and the global hotkey.
+
+────────────────────────────────────────
+2. How to launch and find the UI (critical)
+────────────────────────────────────────
+After launch, look for the clipboard-style icon in the menu bar (top right area).
+
+Open the history picker with the default global shortcut:
+  Control + Option + V   (⌃⌥V)
+
+(Users can change this in cpMan → Settings → Hotkeys.)
+
+If the menu bar is crowded, click the chevron (») on the menu bar to reveal hidden icons, or quit other menu bar apps temporarily.
+
+Open Settings via:
+  Menu bar icon → Settings…
+or standard macOS Settings if cpMan exposes a Settings scene (menu bar app).
+
+────────────────────────────────────────
+3. Accessibility permission (auto-paste)
+────────────────────────────────────────
+Optional feature: “Auto-paste on selection” pastes into the previously active app using a synthesized ⌘V.
+
+macOS requires Accessibility approval for synthetic key events.
+
+First-time flow:
+  • Open the picker (⌃⌥V). If Accessibility is not granted and auto-paste is enabled, an orange banner appears at the top of the picker with “Open Settings”.
+  • That deep-links toward System Settings → Privacy & Security → Accessibility.
+  • Enable cpMan in the list (user may need to add the app with +, picking /Applications/cpMan.app).
+
+Without Accessibility, cpMan still works: selection copies to the clipboard and the user can press ⌘V manually.
+
+There is no login, no server, and no account system.
+
+────────────────────────────────────────
+4. Data / privacy / sandbox (technical)
+────────────────────────────────────────
+• Clipboard contents and history stay on device.
+• History is stored under the app container (Application Support) when running sandboxed.
+• No analytics SDK is bundled; privacy nutrition labels should reflect “Data Not Collected” unless you add networking later.
+
+────────────────────────────────────────
+5. Suggested review checklist
+────────────────────────────────────────
+□ Launch app → menu bar icon visible
+□ Press ⌃⌥V → picker appears
+□ Copy text in Safari/Notes → appears in list
+□ Select item → paste works (with Accessibility ON if testing auto-paste)
+□ Settings → verify Hotkeys and History limits load
+
+────────────────────────────────────────
+6. Contact / build
+────────────────────────────────────────
+If anything fails during review, we can provide a screen recording or adjust UX copy. Bundle ID: com.cpman.app

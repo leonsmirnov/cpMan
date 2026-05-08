@@ -2,7 +2,7 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <!--
-    Privacy Manifest — required for all Mac App Store submissions since May 2024.
+    Privacy Manifest — required for all macOS app distribution since May 2024.
     Declares which privacy-sensitive APIs cpMan uses and why.
     See: https://developer.apple.com/documentation/bundleresources/privacy_manifest_files
 -->

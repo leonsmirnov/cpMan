@@ -3,9 +3,9 @@
 <plist version="1.0">
 <dict>
     <!--
-        RELEASE / APP STORE entitlements
+        RELEASE entitlements
         ═══════════════════════════════════════════════════════════════════════
-        This file is used for the Release configuration (Archive → App Store).
+        This file is used for the Release configuration (Archive / release builds).
         Never use this for day-to-day development — use cpMan-dev.entitlements.
 
         Sandbox notes for cpMan:
@@ -17,12 +17,12 @@
         ═══════════════════════════════════════════════════════════════════════
     -->
 
-    <!-- Required for Mac App Store distribution -->
+    <!-- Required for release distribution -->
     <key>com.apple.security.app-sandbox</key>
     <true/>
 
     <!--
-        Hardened Runtime — required for notarization and App Store.
+        Hardened Runtime — required for notarization and distribution.
         Enforced via ENABLE_HARDENED_RUNTIME = YES in project.yml.
     -->
 
