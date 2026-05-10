@@ -89,7 +89,7 @@ jobs:
 
       - name: Upload DMG to Google Drive
         run: |
-          pip install --quiet google-api-python-client google-auth
+          python3 -m pip install --quiet google-api-python-client google-auth
           python3 << 'EOF'
           import os, json
           from google.oauth2 import service_account
