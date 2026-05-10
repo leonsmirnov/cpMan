@@ -89,8 +89,13 @@ jobs:
 
       - name: Upload DMG to Google Drive
         run: |
-          python3 -m pip install --quiet google-api-python-client google-auth
-          python3 << 'EOF'
+          # macos-15 ships an externally-managed system Python (PEP 668), so use a
+          # disposable venv instead of pip-installing into the system interpreter.
+          python3 -m venv .venv-gdrive
+          source .venv-gdrive/bin/activate
+          python -m pip install --quiet --upgrade pip
+          python -m pip install --quiet google-api-python-client google-auth
+          python << 'EOF'
           import os, json
           from google.oauth2 import service_account
           from googleapiclient.discovery import build

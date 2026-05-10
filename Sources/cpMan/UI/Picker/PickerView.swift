@@ -384,9 +384,10 @@ struct PickerView: View {
     private func reload() {
         searchText     = ""
         debouncedQuery = ""
+        // Always start a fresh open with the most-recent (top) row highlighted, even
+        // if the previous selection is still present in history.
+        selectedID = nil
         updateDisplayedItems()
-        // Keep the last navigated row (Escape / click-away) if it’s still in history — only
-        // `updateDisplayedItems` resets when that id is gone. Collapse rows; scroll into view.
         expandedID = nil
         scrollSelectionToVisibleTick &+= 1
 
