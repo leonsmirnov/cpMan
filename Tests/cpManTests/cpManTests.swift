@@ -431,6 +431,61 @@ final class PasteAsPlainTextTests: XCTestCase {
     }
 }
 
+// MARK: - Pasteboard payload validation (PasteService)
+
+final class PasteboardPayloadTests: XCTestCase {
+    func testTextPayloadRequiresTextValue() {
+        let valid = ClipboardItem(contentType: .text, textValue: "copy me")
+        guard case .text("copy me")? = PasteboardPayload(item: valid) else {
+            return XCTFail("Text item with textValue must produce a text payload")
+        }
+
+        let invalid = ClipboardItem(contentType: .text, textValue: nil)
+        XCTAssertNil(PasteboardPayload(item: invalid),
+                     "Text item without textValue must not clear the pasteboard")
+    }
+
+    func testImagePayloadRequiresReadableImageFile() throws {
+        let missing = ClipboardItem(
+            contentType: .image,
+            imageFilePath: "/tmp/cpman-missing-\(UUID().uuidString).png"
+        )
+        XCTAssertNil(PasteboardPayload(item: missing),
+                     "Missing image file must not clear the pasteboard")
+
+        let imageURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cpman-paste-payload-\(UUID().uuidString).png")
+        try Self.makeTinyPNG(at: imageURL)
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: imageURL)
+        }
+
+        let valid = ClipboardItem(contentType: .image, imageFilePath: imageURL.path)
+        guard case .image(let image)? = PasteboardPayload(item: valid) else {
+            return XCTFail("Readable image file must produce an image payload")
+        }
+        XCTAssertGreaterThan(image.size.width, 0)
+    }
+
+    private static func makeTinyPNG(at url: URL) throws {
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: 4,
+            pixelsHigh: 4,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ),
+        let data = rep.representation(using: .png, properties: [:])
+        else { throw NSError(domain: "PasteboardPayloadTests", code: 1) }
+        try data.write(to: url)
+    }
+}
+
 // MARK: - Edit history item
 
 @MainActor
