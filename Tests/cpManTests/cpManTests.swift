@@ -431,6 +431,51 @@ final class PasteAsPlainTextTests: XCTestCase {
     }
 }
 
+// MARK: - Pasteboard write safety (PasteService)
+
+@MainActor
+final class PasteboardWriteSafetyTests: XCTestCase {
+    private let pasteboard = NSPasteboard.general
+
+    override func tearDown() {
+        pasteboard.clearContents()
+        super.tearDown()
+    }
+
+    func testMissingTextPayloadDoesNotClearExistingPasteboardContents() {
+        pasteboard.clearContents()
+        pasteboard.setString("keep me", forType: .string)
+
+        let item = ClipboardItem(contentType: .text, textValue: nil)
+        PasteService.shared.writeToPasteboardOnly(item: item)
+
+        XCTAssertEqual(
+            pasteboard.string(forType: .string),
+            "keep me",
+            "Invalid text history rows must not erase the current system clipboard"
+        )
+    }
+
+    func testMissingImageFileDoesNotClearExistingPasteboardContents() {
+        pasteboard.clearContents()
+        pasteboard.setString("keep me", forType: .string)
+
+        let item = ClipboardItem(
+            contentType: .image,
+            textValue: nil,
+            ocrText: nil,
+            imageFilePath: "/tmp/cpman-missing-\(UUID().uuidString).png"
+        )
+        PasteService.shared.writeToPasteboardOnly(item: item)
+
+        XCTAssertEqual(
+            pasteboard.string(forType: .string),
+            "keep me",
+            "Invalid image history rows must not erase the current system clipboard"
+        )
+    }
+}
+
 // MARK: - Edit history item
 
 @MainActor
