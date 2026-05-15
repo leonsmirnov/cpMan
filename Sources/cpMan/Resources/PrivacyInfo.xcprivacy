@@ -22,7 +22,8 @@
     <key>NSPrivacyAccessedAPITypes</key>
     <array>
         <!--
-            UserDefaults — used to persist all user preferences (AppSettings).
+            UserDefaults — persists the user's chosen keyboard shortcut via the
+            `KeyboardShortcuts` package. No other settings are stored.
             Reason CA92.1: "Declare this reason to access the UserDefaults APIs
             to read and/or write information that is only accessible to your app."
         -->
@@ -32,21 +33,6 @@
             <key>NSPrivacyAccessedAPITypeReasons</key>
             <array>
                 <string>CA92.1</string>
-            </array>
-        </dict>
-
-        <!--
-            File timestamps — used when writing captured images to disk and
-            when calculating age-based history pruning cutoffs.
-            Reason C617.1: "Declare this reason to access the APIs to manage
-            timestamps for files that are accessible to your app."
-        -->
-        <dict>
-            <key>NSPrivacyAccessedAPIType</key>
-            <string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
-            <key>NSPrivacyAccessedAPITypeReasons</key>
-            <array>
-                <string>C617.1</string>
             </array>
         </dict>
     </array>

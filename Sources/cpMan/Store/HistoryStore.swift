@@ -1,267 +1,159 @@
 import Foundation
-import SwiftData
+import Combine
 import os.log
 
 private let logger = Logger(subsystem: "com.cpman.app", category: "HistoryStore")
 
-/// Persistent clipboard history store backed by SwiftData.
-/// All access must happen on the main actor (SwiftData main context requirement).
+/// In-memory list of recent text clips, persisted as JSON.
+///
+/// Hard contract for basic_version:
+///   • Text only — non-string pasteboard contents are filtered upstream.
+///   • Hard cap of `Self.maxItems` entries, newest-first.
+///   • No user-configurable knobs (no size limits, no age limits, no pinning).
+///   • Persisted to a single JSON file inside the sandbox container so the
+///     history survives quit/restart but is fully scoped to the app.
 @MainActor
 final class HistoryStore: ObservableObject {
     static let shared = HistoryStore()
 
-    let container: ModelContainer
+    /// Maximum number of clips kept in history. Anything beyond this cap is dropped
+    /// from the oldest end immediately on insert. Not user-configurable in basic_version.
+    static let maxItems = 100
 
-    // MARK: - Init (C4: graceful migration fallback instead of fatalError)
+    @Published private(set) var items: [ClipboardItem] = []
 
-    private init(inMemory: Bool = false) {
-        let schema = Schema([ClipboardItem.self])
-        do {
-            let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: inMemory)
-            container = try ModelContainer(for: schema, configurations: [config])
-        } catch {
-            // Persistent store failed (schema migration after an update is the most
-            // common cause). Fall back to in-memory so the app stays usable.
-            // Data from this session will not be persisted.
-            logger.error("Persistent container failed, using in-memory fallback: \(error)")
-            let fallback = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-            container = try! ModelContainer(for: schema, configurations: [fallback])
+    private let storageURL: URL?
+
+    // MARK: - Init
+
+    /// Designated initializer used by the singleton. `storageURL: nil` means
+    /// "in-memory only" and is the path used by tests via `makeForTesting()`.
+    private init(storageURL: URL?) {
+        self.storageURL = storageURL
+        if let url = storageURL {
+            items = Self.load(from: url)
         }
     }
 
-    /// Returns a fresh in-memory store for unit tests.
-    /// Never use in production code — access `HistoryStore.shared` instead.
-    @MainActor
+    private convenience init() {
+        self.init(storageURL: Self.defaultStorageURL())
+    }
+
+    /// Fresh in-memory store with no on-disk persistence. Production code must
+    /// use `HistoryStore.shared`; this is only for unit tests.
     static func makeForTesting() -> HistoryStore {
-        HistoryStore(inMemory: true)
+        HistoryStore(storageURL: nil)
     }
 
-    // MARK: - Write
+    // MARK: - Write API
 
+    /// Inserts a new item at the top of the list and trims to `maxItems`.
+    /// Skips silently when the incoming text duplicates the most recent entry —
+    /// this matches the dedupe contract the clipboard monitor relies on so that
+    /// re-copying the same string does not push older items out of history.
     func insert(_ item: ClipboardItem) {
-        container.mainContext.insert(item)
-        // pruneIfNeeded() mutates the context but does NOT save/notify — we do
-        // that once at the end so insert + prune is a single save + a single
-        // objectWillChange notification, regardless of how many rows were pruned.
-        _ = pruneIfNeeded()
-        save()
-        objectWillChange.send()
-    }
-
-    func delete(_ item: ClipboardItem) {
-        removeItem(item)
-        save()
-        objectWillChange.send()
-    }
-
-    /// Deletes every item in history and removes all stored image files.
-    func deleteAll() {
-        // 1. Delete all images by wiping the directory
-        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let dir = support.appendingPathComponent("cpMan/Images", isDirectory: true)
-        try? FileManager.default.removeItem(at: dir)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        
-        // 2. Clear all thumbnails from memory
-        ThumbnailCache.shared.removeAll()
-        
-        // 3. Batch delete all SwiftData rows (O(1) memory)
-        try? container.mainContext.delete(model: ClipboardItem.self)
-        
-        save()
-        objectWillChange.send()
-        logger.info("Deleted all history items")
-    }
-
-    /// Replaces history with exactly these items **without** pruning. Removes existing rows
-    /// via `removeItem` (so image files are cleaned correctly) instead of `deleteAll()`, which
-    /// would wipe the Images directory and orphan a demo image written just before insert.
-    /// The next clipboard capture will prune as normal when over user limits.
-    func replaceEntireHistory(with items: [ClipboardItem]) {
-        let descriptor = FetchDescriptor<ClipboardItem>()
-        if let existing = try? container.mainContext.fetch(descriptor) {
-            existing.forEach { removeItem($0) }
+        if let latest = items.first, latest.textValue == item.textValue {
+            logger.debug("HistoryStore.insert: dropping duplicate of top item")
+            return
         }
-        for item in items {
-            container.mainContext.insert(item)
+        items.insert(item, at: 0)
+        if items.count > Self.maxItems {
+            items.removeLast(items.count - Self.maxItems)
         }
-        save()
-        objectWillChange.send()
-        logger.info("replaceEntireHistory: inserted \(items.count) items (no prune)")
+        persist()
     }
 
-    /// Inserts many items then runs prune once (avoids per-row prune during bulk add).
-    func insertBatch(_ items: [ClipboardItem]) {
-        for item in items {
-            container.mainContext.insert(item)
-        }
-        _ = pruneIfNeeded()
-        save()
-        objectWillChange.send()
+    /// Removes the entry with this id, if present. No-op when the id is unknown.
+    func delete(id: UUID) {
+        guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
+        items.remove(at: idx)
+        persist()
     }
 
-    func updateOCR(forId id: UUID, text: String) {
-        let descriptor = FetchDescriptor<ClipboardItem>(
-            predicate: #Predicate<ClipboardItem> { $0.id == id }
+    /// Moves an item to the top of the list (MRU). Used after the user selects
+    /// an item from the picker so the next open shows their most-recent choice
+    /// at row 1. No-op when the id is unknown.
+    func touch(id: UUID) {
+        guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
+        var item = items.remove(at: idx)
+        item = ClipboardItem(
+            id: item.id,
+            createdAt: Date(),
+            sourceApp: item.sourceApp,
+            sourceBundleId: item.sourceBundleId,
+            textValue: item.textValue
         )
-        guard let item = try? container.mainContext.fetch(descriptor).first else { return }
-        item.ocrText = text
-        save()
-        objectWillChange.send()
+        items.insert(item, at: 0)
+        persist()
     }
 
-    func togglePin(_ item: ClipboardItem) {
-        item.isPinned.toggle()
-        save()
-        objectWillChange.send()
+    // MARK: - Read API
+
+    /// Returns items matching `query` (case- and diacritic-insensitive), newest first.
+    /// Empty query returns every item.
+    func all(matching query: String = "") -> [ClipboardItem] {
+        guard !query.isEmpty else { return items }
+        return items.filter { $0.textValue.localizedStandardContains(query) }
     }
 
-    /// Moves an item to the top of the history list (MRU behaviour).
-    /// Called when the user selects an item from the picker so the most recently
-    /// used item always appears first on the next open.
-    func touch(_ item: ClipboardItem) {
-        item.createdAt = Date()
-        save()
-        objectWillChange.send()
-        logger.debug("Touched item \(item.id) — moved to top of history")
-    }
+    /// O(1) accessor for the single most recent item — used by the monitor's
+    /// duplicate-skip logic before allocating a new entry.
+    var latestItem: ClipboardItem? { items.first }
 
-    // MARK: - Read
-
-    /// Returns items sorted by most recent, with an optional fetch cap.
-    /// Search filtering is pushed to SwiftData for O(1) memory and full-table scope.
-    func allItems(matching query: String = "", fetchLimit: Int = 500) -> [ClipboardItem] {
-        var descriptor: FetchDescriptor<ClipboardItem>
-        if query.isEmpty {
-            descriptor = FetchDescriptor<ClipboardItem>(
-                sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
-            )
-        } else {
-            descriptor = FetchDescriptor<ClipboardItem>(
-                predicate: #Predicate<ClipboardItem> {
-                    ($0.textValue?.localizedStandardContains(query) ?? false) ||
-                    ($0.ocrText?.localizedStandardContains(query) ?? false)
-                },
-                sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
-            )
-        }
-        descriptor.fetchLimit = fetchLimit
-        return (try? container.mainContext.fetch(descriptor)) ?? []
-    }
-
-    /// P2: O(1) fetch of the single most recent item for deduplication.
-    func latestItem() -> ClipboardItem? {
-        var descriptor = FetchDescriptor<ClipboardItem>(
-            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
-        )
-        descriptor.fetchLimit = 1
-        return try? container.mainContext.fetch(descriptor).first
-    }
-
-    /// O(1) count of all items.
-    func totalCount() -> Int {
-        (try? container.mainContext.fetchCount(FetchDescriptor<ClipboardItem>())) ?? 0
-    }
-
-    /// Resolves a live model for UI actions. Returns nil if the row was pruned or deleted.
+    /// Resolves an id to the live snapshot. Returns nil for unknown / deleted ids.
     func item(for id: UUID) -> ClipboardItem? {
-        let descriptor = FetchDescriptor<ClipboardItem>(
-            predicate: #Predicate<ClipboardItem> { $0.id == id }
-        )
-        return try? container.mainContext.fetch(descriptor).first
+        items.first { $0.id == id }
     }
 
-    // MARK: - Pruning
+    // MARK: - Persistence
 
-    /// Mutates the context to satisfy count/age/size limits. Does NOT save and
-    /// does NOT call `objectWillChange.send()` — the caller is responsible for
-    /// doing that exactly once after pruning, so insert + prune is a single
-    /// save + a single notification regardless of how many rows were removed.
-    /// Returns `true` if anything was removed.
-    @discardableResult
-    private func pruneIfNeeded() -> Bool {
-        let settings = AppSettings.shared
-        var didPrune = false
-
-        // ── Count limit ──────────────────────────────────────────────────────
-        let countLimit = settings.historyCountLimit
-        if countLimit > 0 {
-            let countDescriptor = FetchDescriptor<ClipboardItem>(
-                predicate: #Predicate<ClipboardItem> { !$0.isPinned }
-            )
-            let unpinnedCount = (try? container.mainContext.fetchCount(countDescriptor)) ?? 0
-            let buffer = min(100, countLimit / 10)
-
-            if unpinnedCount > countLimit + buffer {
-                let excessCount = unpinnedCount - countLimit
-                var descriptor = FetchDescriptor<ClipboardItem>(
-                    predicate: #Predicate<ClipboardItem> { !$0.isPinned },
-                    sortBy: [SortDescriptor(\.createdAt, order: .forward)] // oldest first
-                )
-                descriptor.fetchLimit = excessCount
-                if let excess = try? container.mainContext.fetch(descriptor) {
-                    excess.forEach { removeItem($0) }
-                    didPrune = true
-                }
-            }
-        }
-
-        // ── Age limit ────────────────────────────────────────────────────────
-        if settings.historyAgeLimitEnabled, settings.historyAgeLimitDays > 0 {
-            let cutoff = Date().addingTimeInterval(-Double(settings.historyAgeLimitDays) * 86_400)
-            let descriptor = FetchDescriptor<ClipboardItem>(
-                predicate: #Predicate<ClipboardItem> { !$0.isPinned && $0.createdAt < cutoff }
-            )
-            if let expired = try? container.mainContext.fetch(descriptor), !expired.isEmpty {
-                expired.forEach { removeItem($0) }
-                didPrune = true
-            }
-        }
-
-        // ── Size limit (images only) ─────────────────────────────────────────
-        // Only fetch and delete IMAGE items — text rows must never be
-        // deleted to satisfy an image byte budget.
-        if settings.historySizeLimitEnabled, settings.historySizeLimitMB > 0 {
-            let maxBytes = settings.historySizeLimitMB * 1_048_576
-            let descriptor = FetchDescriptor<ClipboardItem>(
-                predicate: #Predicate<ClipboardItem> { !$0.isPinned && $0.imageFilePath != nil },
-                sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
-            )
-            guard let imageItems = try? container.mainContext.fetch(descriptor) else { return didPrune }
-            var totalBytes = imageItems.compactMap(\.imageSizeBytes).reduce(0, +)
-            for item in imageItems.reversed() where totalBytes > maxBytes {
-                totalBytes -= item.imageSizeBytes ?? 0
-                removeItem(item)
-                didPrune = true
-            }
-        }
-
-        return didPrune
-    }
-
-    // MARK: - Private: item removal without save/notify
-
-    /// Removes an item from the context and cleans up its image file, but does
-    /// NOT call save() or objectWillChange.send(). Use this inside batch
-    /// operations (pruning, deleteAll) to avoid redundant disk writes and UI
-    /// refreshes. Callers are responsible for calling save() + objectWillChange
-    /// once after all removals are complete.
-    private func removeItem(_ item: ClipboardItem) {
-        if let path = item.imageFilePath {
-            try? FileManager.default.removeItem(atPath: path)
-            ThumbnailCache.shared.evict(for: path)
-        }
-        container.mainContext.delete(item)
-    }
-
-    // MARK: - Helpers
-
-    // SIM2: log save errors instead of silently swallowing them
-    private func save() {
+    private func persist() {
+        guard let url = storageURL else { return }
         do {
-            try container.mainContext.save()
+            let data = try Self.encoder.encode(items)
+            try data.write(to: url, options: [.atomic])
         } catch {
-            logger.error("HistoryStore save failed: \(error)")
+            logger.error("HistoryStore persist failed: \(error)")
         }
     }
+
+    private static func load(from url: URL) -> [ClipboardItem] {
+        guard FileManager.default.fileExists(atPath: url.path) else { return [] }
+        do {
+            let data = try Data(contentsOf: url)
+            let decoded = try decoder.decode([ClipboardItem].self, from: data)
+            if decoded.count > maxItems {
+                return Array(decoded.prefix(maxItems))
+            }
+            return decoded
+        } catch {
+            // A corrupt file from an earlier schema must not crash the app —
+            // basic_version is intentionally permissive: start with an empty
+            // history and overwrite the file on the next insert.
+            logger.error("HistoryStore load failed (using empty history): \(error)")
+            return []
+        }
+    }
+
+    private static func defaultStorageURL() -> URL? {
+        let fm = FileManager.default
+        guard let support = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            return nil
+        }
+        let dir = support.appendingPathComponent("cpMan", isDirectory: true)
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("history.json", isDirectory: false)
+    }
+
+    private static let encoder: JSONEncoder = {
+        let e = JSONEncoder()
+        e.dateEncodingStrategy = .iso8601
+        return e
+    }()
+
+    private static let decoder: JSONDecoder = {
+        let d = JSONDecoder()
+        d.dateDecodingStrategy = .iso8601
+        return d
+    }()
 }

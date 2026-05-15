@@ -63,10 +63,10 @@ else
   fail "Missing PrivacyInfo.xcprivacy"
 fi
 
-if [ -n "$(read_plist NSAccessibilityUsageDescription)" ]; then
-  pass "NSAccessibilityUsageDescription set"
+if [ -z "$(read_plist NSAccessibilityUsageDescription)" ]; then
+  pass "NSAccessibilityUsageDescription absent (no TCC permission requested)"
 else
-  fail "NSAccessibilityUsageDescription missing"
+  fail "NSAccessibilityUsageDescription unexpectedly set — the app must not request Accessibility"
 fi
 
 if [ "$(read_plist LSUIElement)" = "true" ]; then

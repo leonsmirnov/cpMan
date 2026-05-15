@@ -7,9 +7,9 @@ private let logger = Logger(subsystem: "com.cpman.app", category: "PickerPanel")
 
 // MARK: - Custom hosting view
 
-/// Root cause 2 fix: stock NSHostingView doesn't override acceptsFirstMouse(for:),
-/// so the very first click on the panel (while another app has keyboard focus) is
-/// consumed by the window system as an "activation" gesture and never reaches SwiftUI.
+/// `NSHostingView` doesn't override `acceptsFirstMouse(for:)`, so the very first click
+/// on the panel (while another app has keyboard focus) is consumed by the window system
+/// as an "activation" gesture and never reaches SwiftUI. Subclassing lets us claim it.
 private final class FirstMouseHostingView<Content: View>: NSHostingView<Content> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
@@ -17,18 +17,23 @@ private final class FirstMouseHostingView<Content: View>: NSHostingView<Content>
 // MARK: - Panel
 
 /// Non-activating floating panel that hosts the clipboard history picker.
+///
+/// Lifecycle:
+///   • Hotkey opens the panel above the active app, with no focus stealing.
+///   • Selecting an item writes its text to `NSPasteboard.general` and closes
+///     the panel; the user pastes with ⌘V into the previously active app.
+///   • The panel auto-dismisses when the user clicks another window or
+///     activates another app.
 @MainActor
 final class PickerPanel: NSPanel {
-    private var typedHostingView: FirstMouseHostingView<AnyView>?
+    private var typedHostingView: FirstMouseHostingView<PickerRootView>?
 
-    /// Fired by the hotkey handler when the picker is already visible.
-    /// PickerView subscribes via .onReceive and moves the selection down by one.
+    /// Hotkey pressed while the picker is already open → move selection one down.
     private let navigateDownSubject = PassthroughSubject<Void, Never>()
 
-    /// Fired on EVERY show() call so PickerView reloads its item list and resets
-    /// selection even when onAppear does not re-fire (NSHostingView inside a hidden/
-    /// shown NSPanel is never removed from the view hierarchy, so SwiftUI considers
-    /// the view already-appeared and skips onAppear on subsequent shows).
+    /// Fired on every `show()` so PickerView reloads its list and resets selection.
+    /// `onAppear` is unreliable for an NSHostingView attached to a panel that is
+    /// hidden/shown repeatedly, hence the explicit refresh signal.
     private let refreshSubject = PassthroughSubject<Void, Never>()
 
     /// Removed in `deinit` — stored as `nonisolated(unsafe)` so `deinit` can run without MainActor.
@@ -53,22 +58,16 @@ final class PickerPanel: NSPanel {
         let navigatePublisher = navigateDownSubject.eraseToAnyPublisher()
         let refreshPublisher  = refreshSubject.eraseToAnyPublisher()
 
-        let view = AnyView(
-            PickerView(
-                onSelect:             { [weak self] item in self?.handleSelection(item) },
-                onDismiss:            { [weak self] in self?.close() },
-                navigateDownPublisher: navigatePublisher,
-                refreshPublisher:      refreshPublisher
-            )
-            .environmentObject(HistoryStore.shared)
-            .environmentObject(AppSettings.shared)
-            .environmentObject(AccessibilityService.shared)
+        let root = PickerRootView(
+            onSelect:             { [weak self] item in self?.handleSelection(item) },
+            onDismiss:            { [weak self] in self?.close() },
+            navigateDownPublisher: navigatePublisher,
+            refreshPublisher:      refreshPublisher
         )
-        let hv = FirstMouseHostingView(rootView: view)
+        let hv = FirstMouseHostingView(rootView: root)
         typedHostingView = hv
         contentView = hv
 
-        // Close when the user clicks another window or switches apps (browse-only flow).
         resignKeyObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.didResignKeyNotification,
             object: self,
@@ -108,11 +107,12 @@ final class PickerPanel: NSPanel {
 
     /// Called by the hotkey handler.
     /// - If closed: opens the picker with the first item pre-selected.
-    /// - If already open: moves the selection down by one (navigate instead of dismiss).
+    /// - If already open: moves the selection down by one (so the hotkey acts as
+    ///   a "tap to navigate" while the panel stays up).
     func toggle() {
         if isVisible {
-            // User pressed the hotkey again while the picker is open → navigate down.
-            navigateDown()
+            navigateDownSubject.send()
+            logger.debug("Navigate-down signal sent to picker")
         } else {
             show()
         }
@@ -121,18 +121,9 @@ final class PickerPanel: NSPanel {
     func show() {
         center()
         makeKeyAndOrderFront(nil)
-        // Explicitly tell PickerView to reload its item list and reset selection.
-        // This fires every show() call, which is necessary because onAppear is
-        // unreliable for NSHostingView inside a panel that is hidden/shown repeatedly.
         refreshSubject.send()
         focusSearchTextField()
         logger.debug("Picker panel shown")
-    }
-
-    /// Push a "navigate down" event into PickerView without closing the panel.
-    func navigateDown() {
-        navigateDownSubject.send()
-        logger.debug("Navigate-down signal sent to picker")
     }
 
     // MARK: - Private
@@ -154,7 +145,6 @@ final class PickerPanel: NSPanel {
         }
     }
 
-    /// Depth-first search for the first descendant view of the given type.
     private func firstDescendant<T: NSView>(_ type: T.Type, in view: NSView) -> T? {
         if let match = view as? T { return match }
         for sub in view.subviews {
@@ -163,21 +153,40 @@ final class PickerPanel: NSPanel {
         return nil
     }
 
+    /// Writes the selected text to the system pasteboard, bumps the item to
+    /// the top of history (MRU), and closes the panel. The user then pastes
+    /// into the previously active app with ⌘V.
     private func handleSelection(_ item: ClipboardItem) {
-        logger.debug("Item selected: \(item.contentType.rawValue) from \(item.sourceApp ?? "unknown")")
+        logger.debug("Item selected from \(item.sourceApp ?? "unknown")")
 
-        // Capture the target app NOW, before close() — after the panel closes there
-        // is a brief window where frontmostApplication may flip to cpMan itself.
-        let targetApp = NSWorkspace.shared.frontmostApplication
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(item.textValue, forType: .string)
+        ClipboardMonitor.shared.acknowledgeCurrentPasteboard()
 
-        // Bump createdAt so this item rises to the top of history (MRU order).
-        HistoryStore.shared.touch(item)
+        HistoryStore.shared.touch(id: item.id)
         close()
+    }
+}
 
-        if AppSettings.shared.autoPasteEnabled {
-            PasteService.shared.paste(item: item, into: targetApp)
-        } else {
-            PasteService.shared.writeToPasteboardOnly(item: item)
-        }
+// MARK: - Hosting root
+
+/// Concrete root view for `NSHostingView`. SwiftUI propagates environment objects
+/// far more reliably through a typed wrapper than through `AnyView`, so we always
+/// thread the picker's dependencies through this wrapper instead of erasing.
+struct PickerRootView: View {
+    let onSelect:  (ClipboardItem) -> Void
+    let onDismiss: () -> Void
+    let navigateDownPublisher: AnyPublisher<Void, Never>
+    let refreshPublisher: AnyPublisher<Void, Never>
+
+    var body: some View {
+        PickerView(
+            onSelect: onSelect,
+            onDismiss: onDismiss,
+            navigateDownPublisher: navigateDownPublisher,
+            refreshPublisher: refreshPublisher
+        )
+        .environmentObject(HistoryStore.shared)
     }
 }

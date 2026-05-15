@@ -1,35 +1,25 @@
 # cpMan — Clipboard Manager for macOS
 
-A fast, lightweight clipboard manager that lives in your menu bar. cpMan keeps a searchable history of everything you copy — text and images — and lets you paste any item instantly with a keyboard shortcut.
-
----
-
-## Screenshots
-
-> _Screenshots coming soon_
+A tiny, fast clipboard manager that lives in your menu bar. cpMan remembers
+the last 100 things you copied as plain text and lets you bring any of them
+back with a single keyboard shortcut.
 
 ---
 
 ## Features
 
-- **Clipboard history** — automatically captures text and images as you copy; the picker list updates live while it is open (no need to close and reopen)
+- **Recent-text history** — captures every plain-text copy automatically; up
+  to the last 100 items, newest first
 - **Instant search** — type to filter history in real time
-- **Auto-paste** — select an item and it pastes directly into whatever app you were using (permission required)
-- **Paste as plain text** — strips formatting; press ⌥Return or right-click any text item
-- **Keyboard navigation** — arrow keys to move, Enter to paste, Escape to close
-- **Quick select** — press 1–9 to instantly paste one of the first nine items
-- **Inline preview** — click the chevron on any row to expand full text or a larger image
-- **System viewer** — press Space to open the selected item in Preview.app or TextEdit
-- **Edit history items** — right-click any text item to edit it; saves as a new entry
-- **Delete items** — right-click any item to delete it from history
-- **Clear all history** — wipe everything at once from Settings
-- **Private mode** — pause clipboard capture from the menu bar; choose a duration (15 min, 30 min, 1 h, 2 h, or indefinite) and the icon changes to a lock so you always know it's active
-- **Image support** — captures screenshots and images with thumbnail previews
-- **OCR** — automatically extracts text from images so you can search their content
-- **Paste as File** — right-click an image to paste it as a `.png` file (useful in Finder, Mail, Slack)
-- **Ignore list** — exclude specific apps from being captured (e.g. password managers)
-- **History limits** — configure max item count, total image size, and item age independently
-- **Customisable hotkey** — change the global shortcut to whatever you prefer
+- **Keyboard navigation** — `↑` / `↓` to move, `Return` to copy the selected
+  item, `Esc` to dismiss
+- **Quick select** — press `1`–`9` to immediately copy one of the first nine
+  items
+- **Open Preview** — press `Space` (or right-click → Open Preview) to view
+  the full item in TextEdit
+- **Delete items** — right-click any row → Delete
+- **Customisable hotkey** — change the global shortcut from
+  **Settings → Shortcut**
 
 ---
 
@@ -42,33 +32,25 @@ A fast, lightweight clipboard manager that lives in your menu bar. cpMan keeps a
 
 ## Installation
 
-1. Download the latest `cpMan.dmg` from the [Releases](../../releases) page
-2. Open the DMG and drag **cpMan.app** into your **Applications** folder
-3. Launch cpMan from Applications or Spotlight (`⌘Space` → type `cpMan`)
-4. cpMan appears as a clipboard icon in your menu bar
+1. Download `cpMan` from the Mac App Store (or `cpMan.dmg` from
+   [Releases](../../releases) if you want the direct-DMG channel).
+2. App Store: it installs to `/Applications` automatically. DMG: drag
+   **cpMan.app** into **/Applications**.
+3. Launch cpMan from Applications or Spotlight (`⌘Space` → type `cpMan`).
+4. cpMan appears as a clipboard icon in your menu bar. There is no Dock
+   icon and no `⌘Tab` entry by design (it's a menu-bar agent).
 
 ---
 
 ## Permissions
 
-cpMan requires one permission to work fully.
+**cpMan requires no special permission.** No Accessibility, no Full Disk
+Access, no Screen Recording, no network access. The clipboard is read via
+standard `NSPasteboard` APIs that are allowed inside the App Sandbox.
 
-### Accessibility (required for auto-paste)
-
-Auto-paste works by simulating `⌘V` (configurable in Settings) into the app you were using before opening the picker. macOS requires Accessibility access for any app that synthesises key presses.
-
-**How to grant it:**
-
-1. Open the cpMan picker (`⌃⌥V`) — an orange banner appears at the top
-2. Click **"Open Settings"** in the banner — System Settings opens at the Accessibility pane
-3. **If cpMan is in the list** → toggle it **ON**
-4. **If cpMan is not in the list** → click **`+`**. In the file sheet press **`⌘⇧G`** (Go to Folder), enter **`/Applications`**, press Return, select **cpMan.app**, then **Open**. (If you keep a copy only under your account, try **`~/Applications`**.)
-
-5. Switch back to cpMan — the banner disappears automatically once access is detected
-
-> You can also go through these steps any time via **Settings → General → Accessibility Permission → Open Settings…**
-
-**Without Accessibility:** cpMan still works — the selected item is written to the clipboard and you can paste manually with `⌘V`.
+When you pick a clipboard item from the picker, cpMan copies its text back
+to the system clipboard and closes the panel — you then paste with **`⌘V`**
+yourself, exactly as you would after any normal copy.
 
 ---
 
@@ -76,91 +58,53 @@ Auto-paste works by simulating `⌘V` (configurable in Settings) into the app yo
 
 ### Opening the picker
 
-Press the global hotkey (default **`⌃⌥V`**) from any app. The clipboard history picker appears in the centre of your screen.
+Press the global hotkey (default **`⌃⌥V`**) from any app. The picker appears
+in the centre of the screen.
 
 ### Selecting an item
 
 | Action | Result |
 |---|---|
-| **Click** an item | Pastes it immediately |
-| **↑ / ↓ arrow keys** | Move selection up / down |
-| **Enter** | Paste selected item |
-| **1 – 9** | Instantly paste item at that position |
-| **Escape** | Close picker without pasting |
-| **Type anything** | Filter history by text |
+| **Click** an item | Copies it to the clipboard and closes the picker |
+| **`↑` / `↓`** arrow keys | Move the highlight up / down |
+| **`Return`** | Copies the highlighted item |
+| **`1`–`9`** | Copies the item at that position |
+| **`Space`** | Open the highlighted item in TextEdit |
+| **`Esc`** | Close the picker without copying |
+| **Type anything** | Filter history by text content |
 
-While the picker is open, new copies still appear in the list within about half a second. Your keyboard selection stays on the same row (same item) when possible, so the highlight does not jump to the top every time something new is captured.
+After the picker closes, switch back to the app you were typing in and
+press **`⌘V`** to paste.
 
 ### Right-click menu
 
-Right-clicking any item shows additional options:
-
-| Option | Available on |
+| Option | Effect |
 |---|---|
-| Paste | All items |
-| Paste as Plain Text | Text items |
-| Edit | Text items |
-| Paste as File | Images |
-| Paste OCR Text | Images with detected text |
-| Open Preview | All items |
-| Delete | All items |
-
-### Private mode
-
-Click the cpMan icon in the menu bar and choose **Enable Private Mode**. A sub-menu lets you pick how long private mode stays on:
-
-| Duration | Behaviour |
-|---|---|
-| 15 / 30 minutes | Automatically resumes after the chosen time |
-| 1 hour / 2 hours | Automatically resumes after the chosen time |
-| Until I Turn It Off | Stays active until you choose **Disable Private Mode** |
-
-The menu bar icon changes to a filled lock while private mode is active. Your last-used duration is remembered and pre-selected next time.
+| **Copy** | Same as Return — copies the row to the clipboard |
+| **Open Preview** | Writes the text to a temporary file and opens it in TextEdit |
+| **Delete** | Removes the row from history |
 
 ---
 
-## Configuring the Hotkey
+## Configuring the hotkey
 
-1. Open **cpMan → Settings → Hotkeys**
-2. Click the hotkey field and press your desired key combination
-3. The new hotkey takes effect immediately
-
----
-
-## History Management
-
-Open **cpMan → Settings → History** to configure:
-
-| Setting | Description |
-|---|---|
-| **Max items** | Maximum number of items to keep (`0` = no limit) |
-| **Size limit** | Maximum total size of stored images in MB (`0` = no limit) |
-| **Age limit** | Toggle on, then set the number of days after which items are pruned |
-| **Clear All History** | Permanently delete all history items and images |
-
-Items are pruned automatically when new content is captured.
+1. Open the menu-bar icon → **Settings…**
+2. Click the recorder next to **Open picker** and press your desired
+   key combination.
+3. The new hotkey takes effect immediately.
 
 ---
 
-## Ignore List
+## Where the history lives
 
-Some apps (e.g. password managers) should never have their content saved to clipboard history.
+cpMan stores its 100-item history as a single JSON file inside its sandbox
+container:
 
-**To add an app to the ignore list:**
-1. Open **Settings → Ignore List**
-2. Click **+** and select the app, or type its Bundle ID directly
+```
+~/Library/Containers/com.cpman.app/Data/Library/Application Support/cpMan/history.json
+```
 
-When an ignored app is in the foreground, cpMan skips all clipboard captures.
-
----
-
-## Image Settings
-
-Open **Settings → Images** to configure:
-
-- **Max resolution** — images larger than this are downscaled before saving
-- **Max file size** — images exceeding this size are discarded
-- **OCR** — toggle automatic text extraction from images on or off
+Nothing leaves the device. No analytics, no telemetry, no network calls.
 
 ---
 
@@ -168,8 +112,20 @@ Open **Settings → Images** to configure:
 
 MIT License — Copyright © 2026
 
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to
+deal in the Software without restriction, including without limitation the
+rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+IN THE SOFTWARE.

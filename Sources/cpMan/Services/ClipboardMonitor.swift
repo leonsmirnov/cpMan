@@ -1,9 +1,20 @@
 import AppKit
+import Carbon.HIToolbox
 import os.log
 
 private let logger = Logger(subsystem: "com.cpman.app", category: "ClipboardMonitor")
 
-/// Polls NSPasteboard.general every 500ms and emits new ClipboardItems to HistoryStore.
+/// Polls `NSPasteboard.general` for new plain-text content and writes it into `HistoryStore`.
+///
+/// Capture rules:
+///   • Only `NSPasteboard.PasteboardType.string` payloads are recorded.
+///   • Whitespace-only strings are dropped.
+///   • Finder-style file references (`fileURL` / `NSFilenamesPboardType`) are
+///     dropped so the history never contains stale `file://` rows.
+///   • Secure Event Input is honoured so the monitor never records the
+///     pasteboard while the user is typing into a password field.
+///     `IsSecureEventInputEnabled` is a Carbon API that requires no
+///     entitlement and is safe to call from a sandboxed build.
 @MainActor
 final class ClipboardMonitor {
     static let shared = ClipboardMonitor()
@@ -18,16 +29,16 @@ final class ClipboardMonitor {
         logger.info("Clipboard monitor started (poll interval: \(self.pollInterval)s)")
         timer = Timer.scheduledTimer(withTimeInterval: pollInterval, repeats: true) { _ in
             Task { @MainActor in
-                await ClipboardMonitor.shared.checkPasteboard()
+                ClipboardMonitor.shared.checkPasteboard()
             }
         }
     }
 
-    /// Called by PasteService after writing to the pasteboard so the monitor
-    /// does not re-capture cpMan's own paste action as a new clipboard event.
+    /// Called after the picker writes the user's selection back to the pasteboard
+    /// so the resulting change-count bump is not mistaken for a fresh user copy.
     func acknowledgeCurrentPasteboard() {
         lastChangeCount = NSPasteboard.general.changeCount
-        logger.debug("ClipboardMonitor: acknowledged pasteboard change from paste")
+        logger.debug("ClipboardMonitor: acknowledged pasteboard change")
     }
 
     func stop() {
@@ -36,122 +47,60 @@ final class ClipboardMonitor {
         logger.info("Clipboard monitor stopped")
     }
 
-    private func checkPasteboard() async {
+    // MARK: - Core loop
+
+    private func checkPasteboard() {
         let pasteboard = NSPasteboard.general
         guard pasteboard.changeCount != lastChangeCount else { return }
         lastChangeCount = pasteboard.changeCount
 
+        if IsSecureEventInputEnabled() {
+            logger.debug("Skipped clipboard read: Secure Event Input is active")
+            return
+        }
+
+        let types = pasteboard.types ?? []
+        if Self.shouldSkipForFileReferencePasteboardTypes(Array(types)) {
+            logger.debug("Skipped file reference on pasteboard (Finder copy)")
+            return
+        }
+
+        guard let text = pasteboard.string(forType: .string),
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            logger.debug("Pasteboard change had no plain-text content")
+            return
+        }
+
         let frontApp = NSWorkspace.shared.frontmostApplication
-        let frontBundle = frontApp?.bundleIdentifier
-        if !Self.shouldRecordClipboard(
-            secureInputActive: AccessibilityService.shared.isSecureInputActive,
-            privateModeEnabled: AppSettings.shared.isPrivateModeEnabled,
-            frontmostBundleId: frontBundle,
-            ignoredBundleIds: AppSettings.shared.ignoredBundleIds
-        ) {
-            if AccessibilityService.shared.isSecureInputActive {
-                logger.debug("Skipped clipboard read: Secure Event Input is active")
-            } else if AppSettings.shared.isPrivateModeEnabled {
-                logger.debug("Skipped clipboard read: Private Mode is active")
-            } else if let bundleId = frontBundle, IgnoreListService.shared.isIgnored(bundleId: bundleId) {
-                logger.debug("Skipped clipboard read: \(bundleId) is in ignore list")
-            }
-            return
-        }
+        let item = ClipboardItem(
+            sourceApp: frontApp?.localizedName,
+            sourceBundleId: frontApp?.bundleIdentifier,
+            textValue: text
+        )
 
-        guard let item = await readItem(from: pasteboard, sourceApp: frontApp) else {
-            logger.debug("Pasteboard change contained no supported content (text/image)")
-            return
-        }
-
-        if Self.isDuplicateIncoming(item, latest: HistoryStore.shared.latestItem()) {
+        if Self.isDuplicateIncoming(item, latest: HistoryStore.shared.latestItem) {
             logger.debug("Skipped duplicate clipboard item")
             return
         }
 
         HistoryStore.shared.insert(item)
-        logger.info("Captured \(item.contentType.rawValue) from \(item.sourceApp ?? "unknown")")
-
-        if AppSettings.shared.ocrEnabled,
-           item.contentType == .image,
-           let path = item.imageFilePath {
-            let itemId = item.id
-            Task {
-                logger.debug("Scheduling OCR for item \(itemId)")
-                await OCRService.shared.processImage(itemId: itemId, imagePath: path)
-            }
-        }
+        logger.info("Captured text from \(item.sourceApp ?? "unknown")")
     }
 
-    private func readItem(
-        from pasteboard: NSPasteboard,
-        sourceApp: NSRunningApplication?
-    ) async -> ClipboardItem? {
-        let appName  = sourceApp?.localizedName
-        let bundleId = sourceApp?.bundleIdentifier
+    // MARK: - Predicates (unit-tested)
 
-        // Skip file references (files copied in Finder via ⌘C).
-        // File URLs are ephemeral — the file can move or be deleted, making the
-        // stored reference useless. Pasting a raw file:// URL also produces the
-        // broken "generic file" icon seen in many apps.
-        let types = pasteboard.types ?? []
-        if Self.shouldSkipForFileReferencePasteboardTypes(Array(types)) {
-            logger.debug("Skipped file reference on pasteboard (Finder copy)")
-            return nil
-        }
-
-        // Images take priority over text (apps often write both representations)
-        if let image = NSImage(pasteboard: pasteboard) {
-            return await ImageProcessor.shared.processCapture(
-                image: image,
-                sourceApp: appName,
-                sourceBundleId: bundleId
-            )
-        }
-
-        if let text = pasteboard.string(forType: .string),
-           !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return ClipboardItem(
-                sourceApp: appName,
-                sourceBundleId: bundleId,
-                contentType: .text,
-                textValue: text
-            )
-        }
-
-        return nil
-    }
-
-    // MARK: - Predicates (shared with unit tests)
-
-    /// Finder / file copies — storing these as text produces broken history rows.
+    /// Finder / file copies place a `fileURL` (or legacy `NSFilenamesPboardType`) on the
+    /// pasteboard. Storing them as text would produce noisy `file://…` rows; skip instead.
     nonisolated static func shouldSkipForFileReferencePasteboardTypes(_ types: [NSPasteboard.PasteboardType]) -> Bool {
         types.contains(.fileURL) ||
             types.contains(NSPasteboard.PasteboardType("NSFilenamesPboardType"))
     }
 
-    /// Mirrors the guards in `checkPasteboard` before reading pasteboard contents.
-    nonisolated static func shouldRecordClipboard(
-        secureInputActive: Bool,
-        privateModeEnabled: Bool,
-        frontmostBundleId: String?,
-        ignoredBundleIds: [String]
-    ) -> Bool {
-        if secureInputActive { return false }
-        if privateModeEnabled { return false }
-        if let bid = frontmostBundleId, ignoredBundleIds.contains(bid) { return false }
-        return true
-    }
-
-    /// Same dedupe rule as production before `HistoryStore.insert`.
+    /// True when `incoming` is the same text as the most recent stored item.
+    /// `HistoryStore.insert` performs its own duplicate check; this helper exists
+    /// to keep the monitor's behaviour observable from tests.
     nonisolated static func isDuplicateIncoming(_ incoming: ClipboardItem, latest: ClipboardItem?) -> Bool {
         guard let latest else { return false }
-        switch incoming.contentType {
-        case .text:
-            return incoming.textValue == latest.textValue
-        case .image:
-            guard let h1 = incoming.imageHash, let h2 = latest.imageHash else { return false }
-            return h1 == h2
-        }
+        return incoming.textValue == latest.textValue
     }
 }

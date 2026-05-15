@@ -1,24 +1,35 @@
 import SwiftUI
 
+/// Single-screen Settings window. Exposes the picker hotkey recorder and a
+/// read-only version row.
 struct SettingsView: View {
     var body: some View {
-        TabView {
-            GeneralSettingsView()
-                .tabItem { Label("General", systemImage: "gearshape") }
+        Form {
+            Section {
+                HotkeyRow()
+            } header: {
+                Text("Shortcut")
+            } footer: {
+                Text("Press the recorded shortcut anywhere on macOS to open the cpMan picker.")
+                    .foregroundStyle(.secondary)
+            }
 
-            HistorySettingsView()
-                .tabItem { Label("History", systemImage: "clock") }
-
-            ImagesSettingsView()
-                .tabItem { Label("Images", systemImage: "photo") }
-
-            IgnoreListSettingsView()
-                .tabItem { Label("Ignore List", systemImage: "nosign") }
-
-            HotkeysSettingsView()
-                .tabItem { Label("Hotkeys", systemImage: "keyboard") }
+            Section("About") {
+                LabeledContent("Version", value: Bundle.main.shortVersion)
+                LabeledContent("Build", value: Bundle.main.buildNumber)
+            }
         }
-        .frame(width: 520, height: 380)
-        .environmentObject(AppSettings.shared)
+        .formStyle(.grouped)
+        .padding()
+        .frame(width: 460, height: 240)
+    }
+}
+
+private extension Bundle {
+    var shortVersion: String {
+        infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
+    }
+    var buildNumber: String {
+        infoDictionary?["CFBundleVersion"] as? String ?? "—"
     }
 }

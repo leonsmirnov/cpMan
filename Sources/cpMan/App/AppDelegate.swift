@@ -26,29 +26,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         logger.info("cpMan launching (version \(Bundle.main.shortVersion, privacy: .public))")
         enforceMenuBarOnlyActivationPolicy()
 
-        // ── Accessibility permission ──────────────────────────────────────────
-        // prompt:true registers this binary in the TCC list (System Settings →
-        // Privacy & Security → Accessibility) on every launch.  Without this call
-        // the entry may not appear in the list at all, forcing the user to add it
-        // manually with "+".  On macOS 13+ the call is often silent (no dialog box);
-        // the picker banner then guides the user to flip the toggle.
-        //
-        // Unit tests use cpMan as TEST_HOST, so the full app launches for every test
-        // run — `prompt: true` would spam the Accessibility dialog. Skip the prompt
-        // in that process; `AccessibilityService` still reads trust with `prompt: false`.
-        let isTestHost = NSClassFromString("XCTestCase") != nil
-        let axPrompt = !isTestHost
-        AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": axPrompt] as CFDictionary)
-        if isTestHost {
-            logger.debug("Test host: skipped Accessibility prompt on launch")
-        }
-
-        if AccessibilityService.shared.isGranted {
-            logger.info("Accessibility permission: granted")
-        } else {
-            logger.info("Accessibility permission: not granted — picker banner will guide the user on first open")
-        }
-
         // ── One-time hotkey migration ─────────────────────────────────────────
         // Clear stale ⇧⌘V shortcut saved by earlier builds so the new ⌃⌥V default applies.
         let oldShortcut = KeyboardShortcuts.Shortcut(.v, modifiers: [.shift, .command])
@@ -59,14 +36,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         pickerPanel = PickerPanel()
         ClipboardMonitor.shared.start()
-
-        // If the app was quit while a timed Private Mode session was active,
-        // the timer is lost — disable Private Mode so recording resumes.
-        let settings = AppSettings.shared
-        if settings.isPrivateModeEnabled && settings.lastPrivateModeDurationMinutes > 0 {
-            settings.isPrivateModeEnabled = false
-            logger.info("Private Mode was timed; reset to off after relaunch")
-        }
 
         KeyboardShortcuts.onKeyUp(for: .openPicker) { [weak self] in
             Task { @MainActor in

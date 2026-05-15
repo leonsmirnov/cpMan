@@ -136,7 +136,8 @@ jobs:
             ### Install
             1. Download `cpMan-${{ steps.version.outputs.label }}.dmg`
             2. Open the DMG and drag **cpMan.app** to your Applications folder
-            3. Launch cpMan and grant Accessibility access when prompted
+            3. Launch cpMan — look for the clipboard icon in the menu bar.
+               No system permissions are required.
 
             > **Note:** This build is ad-hoc signed (not notarized).
             > If macOS blocks the app, right-click → Open to bypass Gatekeeper.

@@ -30,8 +30,10 @@
     <!-- App category -->
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.productivity</string>
-    <!-- Describes why Accessibility permission is needed (shown in System Settings) -->
-    <key>NSAccessibilityUsageDescription</key>
-    <string>cpMan needs Accessibility access to simulate paste (⌘V) into the active app after you select a clipboard item.</string>
+    <!-- Export-compliance: cpMan uses no encryption beyond what macOS itself
+         provides (HTTPS, keychain, etc.). Declaring this here lets App Store
+         Connect skip the encryption questionnaire on every upload. -->
+    <key>ITSAppUsesNonExemptEncryption</key>
+    <false/>
 </dict>
 </plist>

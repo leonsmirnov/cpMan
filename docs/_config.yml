@@ -1,0 +1,30 @@
+title: cpMan
+description: A minimal menu-bar clipboard manager for macOS.
+theme: jekyll-theme-cayman
+url: "https://leonsmirnov.github.io"
+baseurl: "/cpMan"
+
+# Hide repo chrome we don't need.
+show_downloads: false
+
+# Pretty URLs: /privacy and /support instead of /privacy.html and /support.html
+permalink: pretty
+
+# Don't try to render unrelated repo files as pages.
+exclude:
+  - Sources
+  - Tests
+  - scripts
+  - Documentation
+  - dist
+  - build
+  - "*.sh"
+  - project.yml
+  - "*.entitlements"
+  - "*.xcprivacy"
+  - "Info.plist"
+  - "*.swift"
+  - "*.xcodeproj"
+  - reinstall.sh
+  - README.md
+  - TODO.md

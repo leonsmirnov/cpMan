@@ -5,15 +5,14 @@
     <!--
         RELEASE entitlements
         ═══════════════════════════════════════════════════════════════════════
-        This file is used for the Release configuration (Archive / release builds).
-        Never use this for day-to-day development — use cpMan-dev.entitlements.
+        Used for the Release configuration (Archive / release builds). For
+        day-to-day development use cpMan-dev.entitlements instead.
 
-        Sandbox notes for cpMan:
-        • NSPasteboard access    — allowed in sandbox by default
-        • CGEvent.post / postToPid — allowed with Accessibility permission
-        • Application Support storage (images) — in the app's own container
-        • Vision / OCR           — no special entitlement needed
-        • AXIsProcessTrusted     — no special entitlement needed
+        The only key declared is App Sandbox. Clipboard content is captured
+        via NSPasteboard (allowed inside the sandbox by default) and stored
+        as JSON in the per-app container under Application Support/cpMan.
+        No network entitlement, no TCC permission, no hardened-runtime
+        exemption is required.
         ═══════════════════════════════════════════════════════════════════════
     -->
 

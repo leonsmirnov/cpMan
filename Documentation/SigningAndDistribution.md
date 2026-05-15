@@ -62,9 +62,9 @@ Open the archive in **Xcode → Organizer** and choose **Distribute App → App 
 In **App Store Connect** for cpMan:
 
 - Set **Version** to `1.0.0`, **Build** to whatever `CURRENT_PROJECT_VERSION` was used (`1` initially; bump for every new upload).
-- Fill **App Privacy** (cpMan does not collect data).
-- **App Review Information → Notes**: paste the contents of `Documentation/AppStoreReviewNotes.txt`.
-- **Screenshots**, description, support URL, privacy policy URL.
+- Fill **App Privacy** (cpMan does not collect data — see `Documentation/AppStoreSubmission/privacy-labels.md`).
+- **App Review Information → Notes**: paste the contents of `Documentation/AppStoreSubmission/review-notes.md`.
+- **Screenshots**, description, support URL, privacy policy URL — all sourced from `Documentation/AppStoreSubmission/` (see `README.md` in that folder for the index).
 
 ---
 
@@ -110,7 +110,9 @@ It checks:
 - Hardened Runtime flag
 - `codesign --verify --deep --strict`
 - Privacy manifest present
-- `NSAccessibilityUsageDescription` set
+- `NSAccessibilityUsageDescription` **absent** — the app does not request
+  Accessibility, and the verifier fails the build if the key is reintroduced
+  by accident.
 - Menu-bar-only (`LSUIElement`)
 - Gatekeeper acceptance (informational only)
 
