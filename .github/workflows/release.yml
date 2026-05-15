@@ -52,6 +52,7 @@ jobs:
             -configuration Release \
             -destination 'generic/platform=macOS' \
             -derivedDataPath build/DerivedData \
+            CONFIGURATION_BUILD_DIR="$PWD/build/Release" \
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED=YES \
             CODE_SIGNING_ALLOWED=YES \
@@ -60,7 +61,11 @@ jobs:
       - name: Locate built app
         id: app_path
         run: |
-          APP=$(find build/DerivedData -name "cpMan.app" -maxdepth 6 | head -1)
+          APP="build/Release/cpMan.app"
+          if [ ! -d "$APP" ]; then
+            echo "::error::Expected built app at $APP"
+            exit 1
+          fi
           echo "path=$APP" >> $GITHUB_OUTPUT
           echo "Found app at: $APP"
 

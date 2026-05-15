@@ -31,10 +31,40 @@ final class PrivateModeService {
         settings.lastPrivateModeDurationMinutes = minutes
 
         cancelTimer()
-        guard minutes > 0 else { return }
+        guard minutes > 0 else {
+            settings.privateModeExpiresAt = nil
+            return
+        }
 
+        let expiresAt = Date().addingTimeInterval(Double(minutes) * 60)
+        settings.privateModeExpiresAt = expiresAt
+        scheduleDisable(after: expiresAt.timeIntervalSinceNow)
+    }
+
+    /// Recreates the in-memory timer after relaunch. If the stored expiration
+    /// already passed while the app was closed, recording resumes immediately.
+    func restorePersistedState(now: Date = Date()) {
+        let settings = AppSettings.shared
+        cancelTimer()
+
+        guard settings.isPrivateModeEnabled else {
+            settings.privateModeExpiresAt = nil
+            return
+        }
+
+        guard let expiresAt = settings.privateModeExpiresAt else { return }
+        let remaining = expiresAt.timeIntervalSince(now)
+        guard remaining > 0 else {
+            disable()
+            return
+        }
+
+        scheduleDisable(after: remaining)
+    }
+
+    private func scheduleDisable(after seconds: TimeInterval) {
         timerTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(minutes) * 60 * 1_000_000_000)
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
             guard !Task.isCancelled else { return }
             await MainActor.run {
                 self?.disable()
@@ -45,7 +75,9 @@ final class PrivateModeService {
     /// Disable private mode and cancel any running timer.
     func disable() {
         cancelTimer()
-        AppSettings.shared.isPrivateModeEnabled = false
+        let settings = AppSettings.shared
+        settings.isPrivateModeEnabled = false
+        settings.privateModeExpiresAt = nil
     }
 
     // MARK: - Private

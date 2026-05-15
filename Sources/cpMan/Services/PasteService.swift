@@ -43,7 +43,10 @@ final class PasteService {
             return
         }
 
-        writeToPasteboard(item: item)
+        guard writeToPasteboard(item: item) else {
+            logger.warning("Paste blocked: item has no valid pasteboard payload")
+            return
+        }
 
         guard axGranted else {
             NSLog("[cpMan] paste BLOCKED — Accessibility not granted. Launch from /Applications and grant AX once.")
@@ -96,8 +99,11 @@ final class PasteService {
 
     /// Writes item to clipboard only — no ⌘V synthesis.
     func writeToPasteboardOnly(item: ClipboardItem) {
-        writeToPasteboard(item: item)
-        logger.debug("Wrote \(item.contentType.rawValue) to pasteboard (auto-paste disabled)")
+        if writeToPasteboard(item: item) {
+            logger.debug("Wrote \(item.contentType.rawValue) to pasteboard (auto-paste disabled)")
+        } else {
+            logger.warning("Skipped pasteboard write: item has no valid payload")
+        }
     }
 
     /// Exports image as PNG file, places its URL on the pasteboard, then synthesises ⌘V.
@@ -122,21 +128,37 @@ final class PasteService {
 
     // MARK: - Private: Pasteboard
 
-    private func writeToPasteboard(item: ClipboardItem) {
+    @discardableResult
+    private func writeToPasteboard(item: ClipboardItem) -> Bool {
         let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
         switch item.contentType {
         case .text:
-            if let text = item.textValue {
-                pasteboard.setString(text, forType: .string)
+            guard let text = item.textValue else {
+                logger.warning("writeToPasteboard: text item \(item.id) has no text payload")
+                return false
+            }
+            pasteboard.clearContents()
+            guard pasteboard.setString(text, forType: .string) else {
+                logger.error("writeToPasteboard: failed to write text item \(item.id)")
+                return false
             }
         case .image:
-            if let path = item.imageFilePath,
-               let image = NSImage(contentsOfFile: path) {
-                pasteboard.writeObjects([image])
+            guard let path = item.imageFilePath else {
+                logger.warning("writeToPasteboard: image item \(item.id) has no file path")
+                return false
+            }
+            guard let image = NSImage(contentsOfFile: path) else {
+                logger.warning("writeToPasteboard: image file missing or unreadable for item \(item.id)")
+                return false
+            }
+            pasteboard.clearContents()
+            guard pasteboard.writeObjects([image]) else {
+                logger.error("writeToPasteboard: failed to write image item \(item.id)")
+                return false
             }
         }
         ClipboardMonitor.shared.acknowledgeCurrentPasteboard()
+        return true
     }
 
     // MARK: - Private: CGEvent synthesis

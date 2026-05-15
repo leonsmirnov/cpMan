@@ -429,6 +429,33 @@ final class PasteAsPlainTextTests: XCTestCase {
         XCTAssertNotNil(item.ocrText)
         XCTAssertEqual(item.ocrText, "extracted text from image")
     }
+
+    func testMissingImagePayloadDoesNotClearExistingPasteboard() {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        XCTAssertTrue(pasteboard.setString("keep me", forType: .string))
+
+        let item = ClipboardItem(
+            contentType: .image,
+            imageFilePath: "/tmp/cpman-missing-\(UUID().uuidString).png"
+        )
+
+        PasteService.shared.writeToPasteboardOnly(item: item)
+
+        XCTAssertEqual(pasteboard.string(forType: .string), "keep me")
+    }
+
+    func testMissingTextPayloadDoesNotClearExistingPasteboard() {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        XCTAssertTrue(pasteboard.setString("keep text", forType: .string))
+
+        let item = ClipboardItem(contentType: .text, textValue: nil)
+
+        PasteService.shared.writeToPasteboardOnly(item: item)
+
+        XCTAssertEqual(pasteboard.string(forType: .string), "keep text")
+    }
 }
 
 // MARK: - Edit history item
@@ -729,17 +756,20 @@ final class IgnoreListServiceTests: XCTestCase {
 final class PrivateModeServiceTests: XCTestCase {
     private var wasPrivate = false
     private var lastMinutes = 0
+    private var expiresAt: Date?
 
     override func setUp() async throws {
         try await super.setUp()
         wasPrivate = AppSettings.shared.isPrivateModeEnabled
         lastMinutes = AppSettings.shared.lastPrivateModeDurationMinutes
+        expiresAt = AppSettings.shared.privateModeExpiresAt
         PrivateModeService.shared.disable()
     }
 
     override func tearDown() async throws {
         PrivateModeService.shared.disable()
         AppSettings.shared.lastPrivateModeDurationMinutes = lastMinutes
+        AppSettings.shared.privateModeExpiresAt = expiresAt
         AppSettings.shared.isPrivateModeEnabled = wasPrivate
         try await super.tearDown()
     }
@@ -748,22 +778,50 @@ final class PrivateModeServiceTests: XCTestCase {
         PrivateModeService.shared.enable(minutes: 0)
         XCTAssertTrue(AppSettings.shared.isPrivateModeEnabled)
         XCTAssertEqual(AppSettings.shared.lastPrivateModeDurationMinutes, 0)
+        XCTAssertNil(AppSettings.shared.privateModeExpiresAt)
     }
 
     func testEnableTimedPersistsLastDuration() {
         PrivateModeService.shared.enable(minutes: 60)
         XCTAssertTrue(AppSettings.shared.isPrivateModeEnabled)
         XCTAssertEqual(AppSettings.shared.lastPrivateModeDurationMinutes, 60)
+        XCTAssertNotNil(AppSettings.shared.privateModeExpiresAt)
+        XCTAssertGreaterThan(AppSettings.shared.privateModeExpiresAt!, Date())
     }
 
     func testDisableClearsPrivateMode() {
         PrivateModeService.shared.enable(minutes: 15)
         PrivateModeService.shared.disable()
         XCTAssertFalse(AppSettings.shared.isPrivateModeEnabled)
+        XCTAssertNil(AppSettings.shared.privateModeExpiresAt)
     }
 
     func testDurationsMenuHasExpectedPresets() {
         XCTAssertEqual(PrivateModeService.durations.map(\.id), [15, 30, 60, 120, 0])
+    }
+
+    func testRestorePersistedTimedModeKeepsPrivateModeUntilExpiration() {
+        let settings = AppSettings.shared
+        let now = Date()
+        settings.isPrivateModeEnabled = true
+        settings.privateModeExpiresAt = now.addingTimeInterval(60)
+
+        PrivateModeService.shared.restorePersistedState(now: now)
+
+        XCTAssertTrue(settings.isPrivateModeEnabled)
+        XCTAssertNotNil(settings.privateModeExpiresAt)
+    }
+
+    func testRestorePersistedTimedModeDisablesAfterExpiration() {
+        let settings = AppSettings.shared
+        let now = Date()
+        settings.isPrivateModeEnabled = true
+        settings.privateModeExpiresAt = now.addingTimeInterval(-1)
+
+        PrivateModeService.shared.restorePersistedState(now: now)
+
+        XCTAssertFalse(settings.isPrivateModeEnabled)
+        XCTAssertNil(settings.privateModeExpiresAt)
     }
 }
 
