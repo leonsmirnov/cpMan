@@ -8,7 +8,7 @@ permalink: /support/
 
 cpMan is a minimal menu-bar clipboard manager for macOS. This page
 covers the most common questions; if it does not answer yours, email
-[opensource@leonsmirnov.com](mailto:opensource@leonsmirnov.com) and
+[leon](mailto:leon.smirnov1986@gmail.com) and
 we'll get back to you.
 
 *(Replace this address with the inbox you actually monitor.)*
