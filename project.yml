@@ -5,6 +5,15 @@ options:
     macOS: "14.0"
   xcodeVersion: "16.0"
   generateEmptyDirectories: true
+  # Keep `xcodebuild` / Xcode CLI defaults on Release (not "AppStore").
+  defaultConfig: Release
+  # AppStore = Release + Manual signing for the app target only. Used by
+  # scripts/release-app-store-archive.sh so SwiftPM packages stay Automatic
+  # (global xcodebuild CODE_SIGN_STYLE=Manual breaks KeyboardShortcuts).
+configs:
+  Debug: debug
+  Release: release
+  AppStore: release
 
 packages:
   KeyboardShortcuts:
@@ -31,6 +40,7 @@ targets:
         INFOPLIST_FILE: Sources/cpMan/Resources/Info.plist
         ENABLE_HARDENED_RUNTIME: YES
         GENERATE_INFOPLIST_FILE: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks"
         # Signing: defaults are safe for Debug. CI/release scripts override per-channel
         # (DEVELOPMENT_TEAM is read from env; see Documentation/SigningAndDistribution.md).
@@ -48,6 +58,16 @@ targets:
           # Default identity for local Release builds; release scripts override
           # this with "Developer ID Application: …" or "Apple Distribution: …".
           CODE_SIGN_IDENTITY: "-"
+          SWIFT_OPTIMIZATION_LEVEL: "-O"
+          GCC_OPTIMIZATION_LEVEL: s
+          DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
+          SWIFT_COMPILATION_MODE: wholemodule
+        AppStore:
+          CODE_SIGN_ENTITLEMENTS: Sources/cpMan/Resources/cpMan-release.entitlements
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: "$(CPMAN_APPSTORE_IDENTITY)"
+          DEVELOPMENT_TEAM: "$(CPMAN_DEVELOPMENT_TEAM)"
+          PROVISIONING_PROFILE_SPECIFIER: "$(CPMAN_APPSTORE_PROVISIONING_PROFILE)"
           SWIFT_OPTIMIZATION_LEVEL: "-O"
           GCC_OPTIMIZATION_LEVEL: s
           DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
@@ -72,6 +92,8 @@ targets:
 
 schemes:
   cpMan:
+    archive:
+      config: AppStore
     build:
       targets:
         cpMan: all

@@ -1,4 +1,4 @@
-# App Store Connect — Text Metadata
+git # App Store Connect — Text Metadata
 
 All fields below are ready to paste verbatim into App Store Connect.
 Character counts (including spaces) are shown after each value so you

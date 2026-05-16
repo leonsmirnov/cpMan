@@ -4,11 +4,13 @@ cpMan ships through two channels from one source tree:
 
 | Channel | Signing | Script |
 |---------|---------|--------|
-| Mac App Store | Apple Distribution + Mac App Store provisioning profile | `scripts/release-app-store-archive.sh` |
+| Mac App Store | Apple Distribution (app) + **Mac Installer Distribution** (`.pkg`) + Mac App Store profile | `scripts/release-app-store-archive.sh` |
 | Direct DMG | Developer ID Application + notarization | `scripts/build-release-dmg-and-install.sh` (with env vars) |
 | Local testing | Ad-hoc | `scripts/build-release-dmg-and-install.sh` (no env vars) |
 
 `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` are centralized in `project.yml` and resolved through `Info.plist` (`$(MARKETING_VERSION)` / `$(CURRENT_PROJECT_VERSION)`).
+
+**App Store archives** use the **`AppStore`** build configuration: same optimizations as **Release**, but **Manual** signing applies only to the **cpMan** app target. SwiftPM packages (KeyboardShortcuts) remain **Automatic**, which avoids `KeyboardShortcuts does not support provisioning profiles` when manual profile settings would otherwise be applied to every target.
 
 ---
 
@@ -17,7 +19,8 @@ cpMan ships through two channels from one source tree:
 1. **Enroll** in the Apple Developer Program.
 2. **Create the App ID**: bundle ID `com.cpman.app` (must match `Info.plist`).
 3. **Create signing certificates** in Xcode → Settings → Accounts → *Manage Certificates*:
-   - **Apple Distribution** (Mac App Store).
+   - **Apple Distribution** (signs the **app** embedded in the archive).
+   - **Mac Installer Distribution** (signs the **`.pkg`** when exporting for App Store Connect — without this, `exportArchive` fails with *No signing certificate "Mac Installer Distribution" found*).
    - **Developer ID Application** (direct download / DMG).
 4. **Provisioning profiles**:
    - For App Store: a profile of type *Mac App Store* tied to `com.cpman.app` and the Apple Distribution certificate. Note its **name or UUID**.
@@ -44,16 +47,61 @@ export CPMAN_APPSTORE_IDENTITY="Apple Distribution: Your Name (TEAMID)"
 export CPMAN_APPSTORE_PROVISIONING_PROFILE="cpMan App Store"   # name or UUID
 ```
 
+If Xcode reports **No profile matching …** (name or UUID):
+
+1. In **developer.apple.com → Profiles**, confirm the type is **Mac App Store Connect** (distribution for the **Mac App Store**), **not** “Mac Development” and **not** “Developer ID”. It must list **App ID** `com.cpman.app` and your **Apple Distribution** certificate.
+2. Download the `.provisionprofile`. **Do not double-click** (macOS opens System Settings, which rejects distribution profiles). **Drag the file onto the Xcode Dock icon** with Xcode running so it imports into  
+   `~/Library/Developer/Xcode/UserData/Provisioning Profiles/`.
+3. **`CPMAN_APPSTORE_PROVISIONING_PROFILE`** must be the profile **Name** exactly as in the portal, or its **UUID** (from the profile’s detail page — not the App ID).
+4. **Xcode → Settings → Accounts**: sign in with the **same Apple ID** that owns the team; select the team → **Download Manual Profiles** if needed.
+5. The release script passes **`-allowProvisioningUpdates`** so `xcodebuild` can pull a missing profile from Apple **if** you are signed into Xcode with that account (Step 4).
+
+Verify a profile is installed and matches your team + bundle ID (replace `7d7dbd41-…` with your UUID):
+
+```bash
+PROFILE="$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles/7d7dbd41-9cd9-4a9a-a637-94bec5457baa.mobileprovision"
+security cms -D -i "$PROFILE" 2>/dev/null | plutil -extract TeamIdentifier raw -o - -
+security cms -D -i "$PROFILE" 2>/dev/null | plutil -extract UUID raw -o - -
+security cms -D -i "$PROFILE" 2>/dev/null | plutil -extract Entitlements.application-identifier raw -o - -
+```
+
+You should see team `6MXNY43D6S`, the same UUID, and `application-identifier` **`6MXNY43D6S.com.cpman.app`**. If `ls` says “No such file”, the profile never imported — repeat Step 2.
+
+### If `exportArchive` fails: *No signing certificate "Mac Installer Distribution" found*
+
+Archiving only signs the **app**. Exporting an App Store **`.pkg`** also requires a **Mac Installer Distribution** certificate in your keychain (separate from **Apple Distribution**).
+
+1. Open [Certificates](https://developer.apple.com/account/resources/certificates/list) → **+** → **Software** → **Mac Installer Distribution**.
+2. In **Keychain Access**: **Keychain Access** → Certificate Assistant → **Request a Certificate From a Certificate Authority…** — save a CSR, upload it on the portal, **download** the `.cer`, double‑click to install.
+3. In **Keychain Access → login → My Certificates**, confirm **Mac Installer Distribution: … (TEAMID)** appears.
+4. Re-run `./scripts/release-app-store-archive.sh`, or **export only** if the archive already exists:
+
+   ```bash
+   ./scripts/release-app-store-archive.sh --export-only
+   ```
+
+If export says **No certificate … matching 'Mac Installer Distribution'** but Keychain shows **3rd Party Mac Developer Installer** (legacy name for the same cert), `installerSigningCertificate` must use that **exact** string. The release script **auto-picks** the first installer line from `security find-identity`; override manually if needed:
+
+```bash
+export CPMAN_APPSTORE_INSTALLER_IDENTITY="3rd Party Mac Developer Installer: Leon Rubin (6MXNY43D6S)"
+./scripts/release-app-store-archive.sh
+```
+
 ### Build & export
 
 ```bash
 ./scripts/release-app-store-archive.sh
 ```
 
-This produces:
+Full run produces `build/AppStore/cpMan.xcarchive` and `build/AppStore/Export/cpMan.pkg`.
 
-- `build/AppStore/cpMan.xcarchive`
-- `build/AppStore/Export/cpMan.pkg`
+**Export only** (after a successful archive — writes `ExportOptions.plist` for you):
+
+```bash
+./scripts/release-app-store-archive.sh --export-only
+```
+
+Requires the same `CPMAN_*` environment variables. Do **not** run bare `xcodebuild -exportArchive` unless you have already created `build/AppStore/ExportOptions.plist` (the script generates it).
 
 ### Upload
 

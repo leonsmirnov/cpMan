@@ -1,6 +1,9 @@
 #!/bin/bash
-# reinstall.sh — run this after every Xcode build to update /Applications/cpMan.app
-# and re-grant Accessibility permission.
+# reinstall.sh — run this after every Xcode build to update /Applications/cpMan.app.
+#
+# The app uses no TCC permissions, so there is nothing to reset. macOS still
+# verifies the code signature on launch, which is why the script re-signs
+# ad-hoc after the copy.
 #
 # Usage:
 #   ./reinstall.sh
@@ -9,7 +12,7 @@
 #   1. Finds the latest Debug build in DerivedData
 #   2. Copies it to /Applications (all users on this Mac)
 #   3. Re-signs with ad-hoc signature so macOS will launch it
-#   4. Resets and re-grants Accessibility permission
+#   4. Clears the quarantine xattr
 #   5. Opens the app
 
 set -e
@@ -30,18 +33,10 @@ cp -R "$APP" "$DEST/"
 rm -rf "$HOME/Applications/cpMan.app"
 echo "✅ Copied to $DEST/cpMan.app"
 
-# Sign and clear quarantine
 codesign --sign - --force --deep "$DEST/cpMan.app"
 xattr -cr "$DEST/cpMan.app"
-echo "✅ Signed and cleared quarantine"
+echo "✅ Signed ad-hoc and cleared quarantine"
 
-# Reset TCC and re-grant Accessibility
-tccutil reset Accessibility com.cpman.app
-echo "✅ Accessibility permission reset"
-
-# Launch
 open "$DEST/cpMan.app"
 echo ""
-echo "⚠️  Now go to: System Settings → Privacy & Security → Accessibility"
-echo "   Find cpMan and toggle it ON"
-echo "   You only need to do this once per reinstall."
+echo "✅ cpMan launched — look for the clipboard icon in the menu bar."
