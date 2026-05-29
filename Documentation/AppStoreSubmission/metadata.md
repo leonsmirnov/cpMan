@@ -1,4 +1,4 @@
-git # App Store Connect — Text Metadata
+# App Store Connect — Text Metadata
 
 All fields below are ready to paste verbatim into App Store Connect.
 Character counts (including spaces) are shown after each value so you
@@ -159,7 +159,7 @@ shipping if you want your name there).
 | Field | Value for 1.0.0 |
 |-------|------------------|
 | **Version** | `1.0.0` |
-| **Build** | `1` (or whatever `CURRENT_PROJECT_VERSION` was in the uploaded build) |
+| **Build** | `4` (increment `CURRENT_PROJECT_VERSION` in `project.yml` for each upload) |
 | **What's New in This Version** | First public release. (Required only on updates — for 1.0.0 leave blank or write "Initial release.") |
 | **Release option** | "Automatically release this version" is fine. Choose "Manually release" if you want to coordinate a launch. |
 

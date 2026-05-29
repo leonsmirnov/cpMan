@@ -4,42 +4,28 @@ Run through this before uploading the new build and clicking **Submit for Review
 
 ## Code and build
 
-- [ ] Bump `CURRENT_PROJECT_VERSION` in `project.yml` (build **2** for this resubmission).
-- [ ] Optional: bump `MARKETING_VERSION` if you want 1.0.1 instead of reusing 1.0.0.
+- [ ] `CURRENT_PROJECT_VERSION` in `project.yml` is **4** (higher than any uploaded build).
 - [ ] `xcodegen generate`
 - [ ] `./scripts/release-app-store-archive.sh` succeeds
-- [ ] Upload new `.pkg` via Organizer or Transporter; wait until build is **Ready**
+- [ ] Upload `build/AppStore/Export/cpMan.pkg` via Transporter or Xcode Organizer
+- [ ] Wait until build **1.0.0 (4)** is **Ready** in App Store Connect
 
 ## Demo mode (Guideline 2.1)
 
-- [ ] Normal launch: picker is **empty** until you copy text (no auto demo for customers).
-- [ ] `./scripts/launch-cpman-demo-mode.sh` OR `open -b com.cpman.app --args -CPManDemoMode` → 15 samples after ⌃⌥V.
-- [ ] Menu **Load Demo Content** still works as fallback.
-- [ ] Review notes updated (Option A = Terminal command).
-- [ ] Picker shows list (not empty), search works (try `meeting`, `git`).
-- [ ] Settings → **Demo content** section visible; Clear / Reload work.
-- [ ] Return, Space preview, Delete, 1–9 shortcuts work on sample rows.
-- [ ] Paste review notes from `review-notes.md` (demo section updated).
+- [ ] Normal launch: picker is **empty** until you copy text.
+- [ ] No **Load Demo Content** item in the menu bar menu.
+- [ ] `./scripts/launch-cpman-demo-mode.sh` → ⌃⌥V shows ~15 samples (e.g. "Team standup notes").
+- [ ] Review notes pasted from `review-notes.md` (Terminal command with `open -n`).
 
 ## Support URL (Guideline 1.5)
 
-- [ ] GitHub Pages enabled: repo **Settings → Pages → `/docs` branch**.
-- [ ] Support page loads in browser: `https://leonsmirnov.github.io/cpMan/support/`
-- [ ] Page is **HTML** (not raw GitHub markdown). Must show contact email and FAQ.
-- [ ] App Store Connect → **App Information** or version page → **Support URL** set to the Pages URL above (not `github.com/.../support.md`).
-- [ ] Privacy Policy URL still works: `https://leonsmirnov.github.io/cpMan/privacy/`
+- [ ] GitHub Pages live: `https://leonsmirnov.github.io/cpMan/support/`
+- [ ] Privacy page live: `https://leonsmirnov.github.io/cpMan/privacy/`
+- [ ] App Store Connect Support URL uses the Pages link (not `github.com/.../support.md`).
 
 ## App Store Connect
 
-- [ ] Attach **new build** to the version (remove old build if needed).
+- [ ] Attach build **1.0.0 (4)** to version 1.0.0.
 - [ ] Update **App Review Information → Notes** from `review-notes.md`.
-- [ ] Paste **Resolution Center reply** from `resolution-center-reply.md` when resubmitting.
-- [ ] Screenshots still accurate (picker with sample content is fine).
-
-## Optional reviewer launch flag
-
-Documented in review notes; not required if auto-seed on first launch works:
-
-```bash
-open -a cpMan --args -CPManDemoMode
-```
+- [ ] Reply in **Resolution Center** using `resolution-center-reply.md`.
+- [ ] Submit for Review.

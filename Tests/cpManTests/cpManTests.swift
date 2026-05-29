@@ -166,17 +166,20 @@ final class DemoModeTests: XCTestCase {
         XCTAssertFalse(DemoMode.isActive)
     }
 
-    func testLoadDemoContentViaMenuPath() {
+    func testLoadDemoContentSeedsStore() {
         let store = HistoryStore.makeForTesting()
-        DemoMode.reloadDemoContent(in: store)
+        store.loadDemoContent()
+        DemoMode.activate()
         XCTAssertGreaterThanOrEqual(store.items.count, 10)
         XCTAssertTrue(DemoMode.isActive)
     }
 
-    func testClearDemoContentEmptiesStore() {
+    func testClearHistoryDeactivatesDemoFlag() {
         let store = HistoryStore.makeForTesting()
-        DemoMode.reloadDemoContent(in: store)
-        DemoMode.clearDemoContent(in: store)
+        store.loadDemoContent()
+        DemoMode.activate()
+        store.replaceAll(with: [])
+        DemoMode.deactivate()
         XCTAssertTrue(store.items.isEmpty)
         XCTAssertFalse(DemoMode.isActive)
     }

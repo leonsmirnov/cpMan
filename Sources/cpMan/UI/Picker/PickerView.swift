@@ -23,7 +23,6 @@ struct PickerView: View {
     var refreshPublisher: AnyPublisher<Void, Never>? = nil
 
     @EnvironmentObject private var store: HistoryStore
-    @AppStorage(DemoMode.activeUserDefaultsKey) private var demoModeActive = false
 
     @State private var searchText     = ""
     @State private var debouncedQuery = ""
@@ -42,10 +41,6 @@ struct PickerView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if demoModeActive {
-                demoBanner
-                Divider()
-            }
             searchBar
             Divider()
             if displayedItems.isEmpty {
@@ -75,20 +70,6 @@ struct PickerView: View {
     }
 
     // MARK: - Search bar
-
-    private var demoBanner: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "sparkles")
-                .foregroundStyle(.secondary)
-            Text("Sample clips for review. Use the menu to reload or clear.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-            Spacer()
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(.secondary.opacity(0.08))
-    }
 
     private var searchBar: some View {
         HStack(spacing: 8) {
@@ -204,11 +185,6 @@ struct PickerView: View {
             Text(searchText.isEmpty ? "Nothing copied yet" : "No results for \"\(searchText)\"")
                 .font(.callout)
                 .foregroundStyle(.secondary)
-            if searchText.isEmpty {
-                Text("Menu bar → Load Demo Content")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

@@ -6,18 +6,19 @@
 Hello App Review,
 
 Thank you for the feedback on cpMan (com.cpman.app). We addressed both points
-in build 2:
+in build 4:
 
 1) Guideline 2.1(a) — Demo content
-   Demo content is no longer loaded for customers on first launch. Reviewers
-   can load 15 fictional sample clips on demand:
+   Customers launch with an empty clipboard history. For review, load 15
+   fictional sample clips via Terminal (cpMan must be quit first):
 
-   Terminal (recommended):
-   killall cpMan 2>/dev/null; open -b com.cpman.app --args -CPManDemoMode
+   killall cpMan 2>/dev/null; open -n -a "/Applications/cpMan.app" --args -CPManDemoMode
 
-   Or: menu bar icon → "Load Demo Content"
+   Alternate:
+   killall cpMan 2>/dev/null; CPMAN_DEMO_MODE=1 /Applications/cpMan.app/Contents/MacOS/cpMan &
 
    Then press ⌃⌥V to open the picker with populated sample data.
+   There is no demo option in the customer-facing menu.
 
 2) Guideline 1.5 — Support URL
    Support URL: https://leonsmirnov.github.io/cpMan/support/

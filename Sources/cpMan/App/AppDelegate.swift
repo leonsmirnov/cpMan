@@ -20,10 +20,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         enforceMenuBarOnlyActivationPolicy()
+        // Seed demo clips before PickerPanel touches HistoryStore.shared.
+        DemoMode.applyOnLaunch(to: HistoryStore.shared)
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         logger.info("cpMan launching (version \(Bundle.main.shortVersion, privacy: .public))")
+        if DemoMode.isActive {
+            logger.info("Demo mode active (\(HistoryStore.shared.items.count) sample clips)")
+        } else if DemoMode.isRequestedViaLaunchEnvironment {
+            logger.warning("Demo mode was requested but did not activate — check launch arguments")
+        }
         enforceMenuBarOnlyActivationPolicy()
 
         // ── One-time hotkey migration ─────────────────────────────────────────
@@ -35,7 +42,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         pickerPanel = PickerPanel()
-        DemoMode.applyOnLaunch(to: HistoryStore.shared)
         ClipboardMonitor.shared.start()
 
         KeyboardShortcuts.onKeyUp(for: .openPicker) { [weak self] in

@@ -30,18 +30,6 @@ Typical response time: within a few business days.
 4. Select a row and press **Return**. The text is copied to the clipboard;
    paste with **⌘V** in any app.
 
-## Demo content (App Review only)
-
-Sample clips are **not** loaded automatically for customers. They exist for
-App Review and testing:
-
-```bash
-killall cpMan 2>/dev/null; open -b com.cpman.app --args -CPManDemoMode
-```
-
-Or use menu bar icon → **Load Demo Content**. Clear samples in
-**Settings → Demo content**.
-
 ## Keyboard shortcuts in the picker
 
 | Action | Shortcut |
