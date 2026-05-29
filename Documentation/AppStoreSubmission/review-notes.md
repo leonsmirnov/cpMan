@@ -1,105 +1,58 @@
 # Reviewer Notes — paste into App Store Connect
 
-Paste the section below into **App Store Connect → App Review
-Information → Notes**. Trim or expand contact details as you like, but
-keep the structure — it answers the questions reviewers usually ask
-about menu-bar clipboard apps before they have to ask them.
+Paste the section below into **App Store Connect → App Review Information → Notes**.
 
 ---
 
 ```
 Thank you for reviewing cpMan.
 
-1. WHAT THIS APP IS
-   cpMan is a minimal menu-bar clipboard manager for macOS. It remembers
-   the most recent plain-text clips (hard cap of 100) and lets the user
-   bring any of them back via a small floating picker.
+DEMO MODE — START HERE (required before testing the picker)
+cpMan ships with an empty history for customers. For review, load fictional
+sample clips using ONE of the options below.
 
-   • Plain-text only — image / file / rich-text pasteboard payloads are
-     ignored.
-   • History lives as a JSON file inside the app's sandbox container.
-   • No accounts, no analytics, no networking. Nothing leaves the device.
+OPTION A — Terminal (recommended; copy/paste as one line):
+   killall cpMan 2>/dev/null; open -b com.cpman.app --args -CPManDemoMode
 
-2. HOW TO LAUNCH AND FIND THE UI
-   cpMan uses LSUIElement = YES: it does NOT show a Dock icon and does
-   NOT appear in ⌘Tab. That is intentional for a menu-bar utility.
+OPTION B — Menu bar fallback:
+   Launch cpMan → click the clipboard icon in the menu bar → "Load Demo Content"
 
-   After launch, look for the clipboard icon in the menu bar (top-right
-   area of the screen). If the menu bar is crowded, click the chevron
-   "»" to reveal hidden icons.
+After either option, press Control + Option + V (⌃⌥V) to open the picker.
+You should see 15 sample clips (not an empty list) and a "Sample clips" banner.
 
-   Open the picker with the default global shortcut:
+Suggested test flow:
+1. Run Option A or B above.
+2. Press ⌃⌥V → picker with sample clips.
+3. Type "meeting" or "git" in search → filtered results.
+4. Return on a row → text on clipboard; paste with ⌘V.
+5. Space → preview long clip in TextEdit.
+6. Delete → remove selected row.
+7. Menu bar → Settings… → Demo content section (clear/reload) and Shortcut.
 
-       Control + Option + V   (⌃⌥V)
+Alternate env-var launch (if Terminal is preferred without --args):
+   killall cpMan 2>/dev/null; CPMAN_DEMO_MODE=1 /Applications/cpMan.app/Contents/MacOS/cpMan &
 
-   The shortcut can be changed in cpMan → Settings… → Shortcut.
+WHAT THIS APP IS
+cpMan is a minimal menu-bar clipboard manager. Plain-text history (max 100),
+stored on the Mac only. No accounts, no network, no special permissions.
 
-3. SUGGESTED 30-SECOND TEST FLOW
-   a) Launch cpMan → confirm clipboard icon in the menu bar; no Dock
-      icon, not in ⌘Tab.
-   b) Press ⌃⌥V → the picker appears.
-   c) In Safari or Notes, copy any text → it appears at the top of the
-      picker the next time you open it.
-   d) Select a row → picker closes; ⌘V pastes that text into the app
-      that was active before the picker opened.
-   e) In Finder, copy a file → it does NOT appear in cpMan (cpMan only
-      records text on purpose).
-   f) Open Settings → record a new shortcut → confirm it works.
+UI LOCATION
+cpMan uses LSUIElement: no Dock icon, not in ⌘Tab. Look for the clipboard icon
+in the menu bar (use the » chevron if the bar is crowded).
 
-4. PERMISSIONS — NONE
-   cpMan does not request Accessibility, Full Disk Access, Screen
-   Recording, Camera, Microphone, Contacts, Calendars, Reminders,
-   Photos, or any other restricted permission. There is no TCC prompt
-   anywhere in the app.
+PERMISSIONS — NONE
+No Accessibility, Full Disk Access, Screen Recording, or TCC prompts.
 
-   • Clipboard is read via standard NSPasteboard APIs (allowed in the
-     sandbox by default).
-   • When the user selects an item in the picker, cpMan writes the text
-     back to NSPasteboard. No synthetic key events are generated and no
-     other application is controlled, so the Accessibility entitlement
-     is not needed.
+PRIVACY
+Data Not Collected. No network entitlement.
 
-5. SECURE INPUT
-   While macOS reports Secure Event Input is active (e.g. a password
-   field is focused), cpMan pauses recording. The check uses the public
-   Carbon API `IsSecureEventInputEnabled()`, which requires no
-   entitlement.
+SUPPORT URL
+https://leonsmirnov.github.io/cpMan/support/
+Contact: leon.smirnov1986@gmail.com
 
-6. PRIVACY / DATA HANDLING
-   • Data collected: NONE. Privacy nutrition labels are set to
-     "Data Not Collected".
-   • No network entitlement at all (com.apple.security.network.client
-     and .network.server are both absent from the entitlements file).
-     Reviewers can verify in Activity Monitor → Network that cpMan
-     never opens a connection.
-   • Privacy Manifest (PrivacyInfo.xcprivacy) declares a single API
-     usage: NSPrivacyAccessedAPICategoryUserDefaults, reason CA92.1,
-     used by the bundled KeyboardShortcuts package to persist the
-     user's hotkey.
-   • No third-party SDKs other than the open-source Swift package
-     KeyboardShortcuts (sindresorhus/KeyboardShortcuts, MIT).
-
-7. BACKGROUND BEHAVIOR
-   cpMan polls NSPasteboard.changeCount on the main run loop at a low
-   cadence. When the changeCount has not advanced, no allocation or I/O
-   happens. There is no LaunchAgent, no LaunchDaemon, no XPC service,
-   no helper tool, and no login item.
-
-8. ENCRYPTION
-   cpMan uses no encryption beyond what macOS itself provides. The
-   Info.plist sets ITSAppUsesNonExemptEncryption = false, so the
-   encryption questionnaire is skipped automatically on upload.
-
-9. ACCOUNTS / IAP
-   No accounts, no sign-in, no in-app purchases, no subscriptions.
-
-10. CONTACT
-    Name:    <Your Name>
-    Email:   <Your Email>
-    Phone:   <Your Phone>
-    Bundle:  com.cpman.app
-
-If anything fails during review, we can supply a short screen recording
-or adjust the notes. The app contains no hidden features — what you see
-is everything.
+CONTACT FOR REVIEW
+Name:  Leon Smirnov
+Email: leon.smirnov1986@gmail.com
+Phone: [your phone with country code]
+Bundle: com.cpman.app
 ```

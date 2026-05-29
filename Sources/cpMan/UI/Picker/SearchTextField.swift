@@ -26,6 +26,8 @@ struct SearchTextField: NSViewRepresentable {
     var onSpace:            () -> Void      = {}
     /// Fires when the user presses digit 1–9 while the field is empty (quick-select shortcut).
     var onNumericShortcut:  (Int) -> Void   = { _ in }
+    /// Fires when Delete/Backspace is pressed while the field is empty.
+    var onDelete:           () -> Void      = {}
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -124,6 +126,18 @@ struct SearchTextField: NSViewRepresentable {
             case #selector(NSResponder.cancelOperation(_:)):
                 parent.onEscape()
                 return true   // suppress field clear
+            case #selector(NSResponder.deleteBackward(_:)):
+                if textView.string.isEmpty {
+                    parent.onDelete()
+                    return true
+                }
+                return false
+            case #selector(NSResponder.deleteForward(_:)):
+                if textView.string.isEmpty {
+                    parent.onDelete()
+                    return true
+                }
+                return false
             default:
                 return false  // let the field editor handle everything else normally
             }

@@ -3,8 +3,27 @@ import SwiftUI
 /// Single-screen Settings window. Exposes the picker hotkey recorder and a
 /// read-only version row.
 struct SettingsView: View {
+    @ObservedObject private var store = HistoryStore.shared
+    @AppStorage(DemoMode.activeUserDefaultsKey) private var demoModeActive = false
+
     var body: some View {
         Form {
+            if demoModeActive {
+                Section {
+                    Text("Sample clipboard clips are loaded so you can explore cpMan without copying from other apps. Copy your own text anytime; real clips mix with the samples.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    Button("Clear demo content") {
+                        DemoMode.clearDemoContent(in: store)
+                    }
+                    Button("Reload demo content") {
+                        DemoMode.reloadDemoContent(in: store)
+                    }
+                } header: {
+                    Text("Demo content")
+                }
+            }
+
             Section {
                 HotkeyRow()
             } header: {
@@ -21,7 +40,7 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .padding()
-        .frame(width: 460, height: 240)
+        .frame(width: 460, height: demoModeActive ? 320 : 240)
     }
 }
 

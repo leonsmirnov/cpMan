@@ -9,6 +9,7 @@ struct AppMenuView: View {
     let onOpenPicker: @MainActor () -> Void
 
     @Environment(\.openSettings) private var openSettings
+    @ObservedObject private var store = HistoryStore.shared
 
     var body: some View {
         Button("Open cpMan") {
@@ -16,6 +17,11 @@ struct AppMenuView: View {
         }
 
         Divider()
+
+        Button("Load Demo Content") {
+            DemoMode.reloadDemoContent(in: store)
+            onOpenPicker()
+        }
 
         Button("Settings…") {
             // Keep `.accessory` activation policy (see AppDelegate) so cpMan never

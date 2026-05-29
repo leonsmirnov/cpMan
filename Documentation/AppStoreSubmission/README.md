@@ -16,6 +16,8 @@ App Store Connect section or to a likely review question.
 | [`encryption-compliance.md`](./encryption-compliance.md) | Why `ITSAppUsesNonExemptEncryption = false` is correct and what to say if asked. |
 | [`privacy-labels.md`](./privacy-labels.md) | App Privacy "nutrition label" answers — "Data Not Collected". |
 | [`submission-checklist.md`](./submission-checklist.md) | Pre-flight checklist to run through before clicking *Submit for Review*. |
+| [`resubmission-checklist.md`](./resubmission-checklist.md) | After a rejection: demo mode, support URL, new build. |
+| [`resolution-center-reply.md`](./resolution-center-reply.md) | Paste into Resolution Center when resubmitting. |
 
 ## Quick recap (the version cpMan submits)
 

@@ -1,82 +1,67 @@
-# Privacy Policy — cpMan
+# Privacy Policy - cpMan
 
 *Last updated: 2026-05-15*
 
-This page is the official Privacy Policy for the **cpMan** macOS
-application (bundle ID `com.cpman.app`), distributed via the Mac App
-Store and as a direct download.
+cpMan is a macOS menu-bar app (bundle ID `com.cpman.app`), sold on the Mac
+App Store and available as a direct download. This policy describes what
+the app does with information on your Mac.
 
-## Short version
+## Summary
 
-cpMan does not collect, transmit, sell, share, or otherwise process any
-personal data. Everything cpMan reads from your clipboard stays on your
-Mac, inside the app's own sandbox container. There are no accounts, no
-analytics, no advertising, and no network requests of any kind.
+cpMan does not collect, send, sell, or share personal data. Clipboard text
+you copy is stored only inside the app's sandbox on your Mac. There are no
+accounts, no ads, no analytics, and no network access.
 
-## What cpMan reads
+## Clipboard access
 
-cpMan watches the macOS general pasteboard (`NSPasteboard.general`) for
-new **plain-text** clips. When you copy text in another app, cpMan adds
-a record to its on-device history. Non-text payloads (images, files,
-rich text) are ignored.
+cpMan reads plain text from the system clipboard when you copy in another
+app and adds it to a local history list. Images, files, and rich text are
+not saved.
 
-While macOS reports that **Secure Event Input** is active (for example,
-when a password field is focused), cpMan automatically pauses recording
-so passwords and other secure entries are not captured.
+When macOS turns on Secure Event Input (common in password fields), cpMan
+stops recording until that mode ends, so passwords are not stored.
 
-## Where the data lives
+## Storage on your Mac
 
-History is stored as a JSON file inside the app's sandbox container:
+History is kept in a JSON file here:
 
 ```
 ~/Library/Containers/com.cpman.app/Data/Library/Application Support/cpMan/history.json
 ```
 
-No other app can read this location, and cpMan does not copy it anywhere
-else. There is a hard cap of **100 entries**; older clips are discarded
-to make room for newer ones. You can delete any entry from the picker UI
-at any time.
+Other apps cannot read that folder. The list holds at most 100 items; older
+entries are removed when new ones arrive. You can delete items in the picker.
 
-The hotkey you choose for opening the picker is persisted via
-`UserDefaults`. That is the only piece of configuration cpMan stores.
+Your global hotkey is saved in `UserDefaults` on the same machine.
 
-## What cpMan sends over the network
+## Network
 
-Nothing. The app does not have the `com.apple.security.network.client`
-or `com.apple.security.network.server` entitlement, so the macOS sandbox
-will refuse any networking attempt. You can verify this in Activity
-Monitor → Network: cpMan never appears there.
+cpMan has no network entitlements. The sandbox blocks outbound connections.
+The app does not phone home, sync, or upload clipboard data.
 
-## Third-party services and SDKs
+## Other software in the app
 
-cpMan uses one open-source Swift package, **KeyboardShortcuts** by
-Sindre Sorhus (MIT-licensed), to manage the customizable global hotkey.
-It runs entirely in-process and only reads/writes the hotkey value in
-`UserDefaults`. cpMan integrates no analytics SDK, no crash reporter, no
-advertising SDK, and no telemetry of any kind.
+cpMan includes the open-source **KeyboardShortcuts** library (MIT) to store
+your hotkey in `UserDefaults`. There is no analytics, crash reporting, or
+advertising code in the project.
 
 ## Children
 
-cpMan is rated 4+ in the App Store. It does not collect any data, so it
-collects no data from children either.
+The app is rated 4+. It does not collect data from anyone, including children.
 
-## Your choices
+## What you can do
 
-- **Delete an entry:** open the picker, select the entry, press the
-  delete shortcut shown in the UI.
-- **Clear the entire history:** quit cpMan, then delete the file at the
-  path above.
-- **Uninstall:** drag cpMan from `/Applications` to the Trash. macOS
-  will also remove the sandbox container the next time you empty the
-  Trash; if you want to remove the container immediately, delete
+- Delete one item from the picker with the delete key shown in the UI.
+- Clear all history: quit cpMan and delete the JSON path above, or remove
   `~/Library/Containers/com.cpman.app`.
+- Uninstall: move cpMan from Applications to the Trash. Empty the Trash to
+  remove the sandbox container, or delete the container folder yourself.
 
-## Changes to this policy
+## Updates
 
-If this policy changes materially, the new version will be published at
-the same URL with an updated "Last updated" date.
+If we change this policy, we will post a new version at this URL and change
+the date at the top.
 
 ## Contact
 
-Questions or concerns about privacy: *(insert support email here, e.g.
-`support@yourdomain.com`)*
+Privacy questions: opensource@leonsmirnov.com

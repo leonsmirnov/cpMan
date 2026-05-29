@@ -35,6 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         pickerPanel = PickerPanel()
+        DemoMode.applyOnLaunch(to: HistoryStore.shared)
         ClipboardMonitor.shared.start()
 
         KeyboardShortcuts.onKeyUp(for: .openPicker) { [weak self] in

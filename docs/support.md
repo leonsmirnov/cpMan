@@ -6,56 +6,68 @@ permalink: /support/
 
 # cpMan Support
 
-cpMan is a minimal menu-bar clipboard manager for macOS. This page
-covers the most common questions; if it does not answer yours, email
-[leon](mailto:leon.smirnov1986@gmail.com) and
-we'll get back to you.
+cpMan is a menu-bar clipboard manager for macOS. This page answers common
+questions and explains how to contact us.
 
-*(Replace this address with the inbox you actually monitor.)*
+## Contact support
+
+**Email:** [leon.smirnov1986@gmail.com](mailto:leon.smirnov1986@gmail.com)
+
+We read every message. Include your macOS version (Apple menu → About This Mac),
+cpMan version (menu-bar icon → Settings → About), and a short description of
+what happened.
+
+Typical response time: within a few business days.
 
 ## Getting started
 
-1. Install cpMan from the Mac App Store (or open the DMG and drag
-   cpMan into `/Applications`).
-2. Launch it. A small clipboard icon appears in the menu bar.
-   - cpMan does **not** show a Dock icon or appear in ⌘Tab. That is by
-     design — it's meant to stay out of the way.
-   - If your menu bar is crowded, click the chevron `»` to reveal
-     hidden icons.
-3. Copy some text in any app.
-4. Press **⌃⌥V** (Control-Option-V) to open the picker.
-5. Select a row with the arrow keys and press **Return**. The text is
-   placed on the clipboard; paste with **⌘V** as usual.
+1. Install cpMan from the Mac App Store.
+2. Launch the app. A clipboard icon appears in the menu bar.
+   - cpMan does **not** show a Dock icon or appear in ⌘Tab.
+   - If the menu bar is crowded, click the **»** chevron to reveal hidden icons.
+3. Copy text in any app. Press **⌃⌥V** (Control-Option-V) to open the picker,
+   or choose **Open cpMan** from the menu-bar menu.
+4. Select a row and press **Return**. The text is copied to the clipboard;
+   paste with **⌘V** in any app.
 
-## Keyboard shortcuts inside the picker
+## Demo content (App Review only)
+
+Sample clips are **not** loaded automatically for customers. They exist for
+App Review and testing:
+
+```bash
+killall cpMan 2>/dev/null; open -b com.cpman.app --args -CPManDemoMode
+```
+
+Or use menu bar icon → **Load Demo Content**. Clear samples in
+**Settings → Demo content**.
+
+## Keyboard shortcuts in the picker
 
 | Action | Shortcut |
 |--------|----------|
 | Move selection | ↑ / ↓ |
-| Copy selected entry & close picker | Return |
+| Copy selected entry and close | Return |
 | Quick-pick top 1–9 | `1`…`9` |
-| Preview long entry | Space |
-| Delete the selected entry | Delete |
-| Dismiss the picker | Esc |
+| Preview a long clip | Space |
+| Delete selected entry | Delete |
+| Dismiss picker | Esc |
 
 ## Changing the global hotkey
 
-Open the menu-bar icon → **Settings…** → **Shortcut** and record a new
-combination. Anything macOS allows as a global hotkey works.
+Menu-bar icon → **Settings…** → **Shortcut**. Record any combination macOS
+allows as a global hotkey.
 
 ## What gets recorded
 
 - Plain text only. Images, files, and rich text are ignored.
-- The most recent **100** entries are kept on disk. Older entries are
-  discarded automatically.
-- While a password field is active (macOS reports "Secure Event Input"
-  is on) cpMan pauses recording.
+- Up to **100** recent entries, stored on your Mac inside the app sandbox.
+- Recording pauses while a password field is active (Secure Event Input).
 
 ## Privacy
 
-cpMan does not have any networking entitlement, so it cannot send data
-anywhere. Everything stays inside the app's sandbox container on your
-Mac. See the [Privacy Policy](../privacy/) for full details.
+cpMan has no network entitlement. Clipboard history never leaves your Mac.
+See the [Privacy Policy](../privacy/) for details.
 
 ## Removing all data
 
@@ -65,31 +77,17 @@ Quit cpMan, then delete:
 ~/Library/Containers/com.cpman.app
 ```
 
-That removes both the history file and the saved hotkey.
+That removes history, preferences, and the saved hotkey.
 
 ## Troubleshooting
 
-**The menu-bar icon doesn't appear.** Make sure cpMan is running
-(Launchpad → cpMan). If the menu bar is full, the icon may be hidden
-behind the `»` chevron, or hidden by Bartender / Hidden Bar etc.
+**Menu-bar icon missing.** Confirm cpMan is running. Check the **»** overflow
+menu or menu-bar tools such as Bartender.
 
-**The hotkey does nothing.** Another app is probably using the same
-combination. Open Settings and record a different shortcut.
+**Hotkey does nothing.** Another app may use the same shortcut. Pick a different
+one in Settings.
 
-**A copy did not appear in the history.**
-- It might be non-text (an image, a file). cpMan only records text.
-- A password field was probably focused. Re-copy with a different field
-  focused and the entry will appear.
+**A copy did not appear.** Non-text copies are ignored. Password fields pause
+recording; copy again from a normal text field.
 
-**I want to clear everything.** Use the Delete key inside the picker to
-remove one entry at a time, or delete the sandbox container as shown
-above to wipe everything.
-
-## Contact
-
-Email *(your support email)* with:
-
-- macOS version (Apple menu → About This Mac).
-- cpMan version (menu-bar icon → Settings… → About).
-- A short description of what happened, what you expected, and what
-  you saw instead.
+**Need more help?** Email [leon.smirnov1986@gmail.com](mailto:leon.smirnov1986@gmail.com).

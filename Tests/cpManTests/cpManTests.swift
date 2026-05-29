@@ -126,6 +126,75 @@ final class HistoryStoreTests: XCTestCase {
         store.delete(id: item.id)
         XCTAssertNil(store.item(for: item.id))
     }
+
+    func testReplaceAllReplacesHistory() {
+        let store = HistoryStore.makeForTesting()
+        store.insert(ClipboardItem(textValue: "before"))
+        store.replaceAll(with: [
+            ClipboardItem(textValue: "after-1"),
+            ClipboardItem(textValue: "after-2")
+        ])
+        XCTAssertEqual(store.items.map(\.textValue), ["after-1", "after-2"])
+    }
+
+    func testLoadDemoContentSeedsMultipleItems() {
+        let store = HistoryStore.makeForTesting()
+        store.loadDemoContent()
+        XCTAssertGreaterThanOrEqual(store.items.count, 10)
+        XCTAssertTrue(store.all(matching: "meeting").contains { $0.textValue.localizedStandardContains("meeting") })
+    }
+}
+
+// MARK: - Demo mode
+
+@MainActor
+final class DemoModeTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        DemoMode.deactivate()
+    }
+
+    override func tearDown() {
+        DemoMode.deactivate()
+        super.tearDown()
+    }
+
+    func testApplyOnLaunchWithoutFlagDoesNotSeed() {
+        let store = HistoryStore.makeForTesting()
+        DemoMode.applyOnLaunch(to: store)
+        XCTAssertTrue(store.items.isEmpty)
+        XCTAssertFalse(DemoMode.isActive)
+    }
+
+    func testLoadDemoContentViaMenuPath() {
+        let store = HistoryStore.makeForTesting()
+        DemoMode.reloadDemoContent(in: store)
+        XCTAssertGreaterThanOrEqual(store.items.count, 10)
+        XCTAssertTrue(DemoMode.isActive)
+    }
+
+    func testClearDemoContentEmptiesStore() {
+        let store = HistoryStore.makeForTesting()
+        DemoMode.reloadDemoContent(in: store)
+        DemoMode.clearDemoContent(in: store)
+        XCTAssertTrue(store.items.isEmpty)
+        XCTAssertFalse(DemoMode.isActive)
+    }
+}
+
+// MARK: - Demo seed data
+
+final class DemoSeedDataTests: XCTestCase {
+    func testSeedItemsAreNonEmptyText() {
+        for item in DemoSeedData.makeItems() {
+            XCTAssertFalse(item.textValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+    }
+
+    func testSeedItemsIncludeMultipleSourceApps() {
+        let apps = Set(DemoSeedData.makeItems().compactMap(\.sourceApp))
+        XCTAssertGreaterThanOrEqual(apps.count, 4)
+    }
 }
 
 // MARK: - ClipboardMonitor predicates

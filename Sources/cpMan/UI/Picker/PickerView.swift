@@ -23,6 +23,7 @@ struct PickerView: View {
     var refreshPublisher: AnyPublisher<Void, Never>? = nil
 
     @EnvironmentObject private var store: HistoryStore
+    @AppStorage(DemoMode.activeUserDefaultsKey) private var demoModeActive = false
 
     @State private var searchText     = ""
     @State private var debouncedQuery = ""
@@ -41,6 +42,10 @@ struct PickerView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if demoModeActive {
+                demoBanner
+                Divider()
+            }
             searchBar
             Divider()
             if displayedItems.isEmpty {
@@ -71,6 +76,20 @@ struct PickerView: View {
 
     // MARK: - Search bar
 
+    private var demoBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "sparkles")
+                .foregroundStyle(.secondary)
+            Text("Sample clips for review. Use the menu to reload or clear.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(.secondary.opacity(0.08))
+    }
+
     private var searchBar: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
@@ -84,7 +103,8 @@ struct PickerView: View {
                 onPlainTextReturn: { commitSelection() },
                 onEscape:          { onDismiss() },
                 onSpace:           { previewSelection() },
-                onNumericShortcut: { n in selectByNumber(n) }
+                onNumericShortcut: { n in selectByNumber(n) },
+                onDelete:          { deleteSelection() }
             )
             .frame(height: 20)
             .onChange(of: searchText) { _, new in
@@ -184,6 +204,11 @@ struct PickerView: View {
             Text(searchText.isEmpty ? "Nothing copied yet" : "No results for \"\(searchText)\"")
                 .font(.callout)
                 .foregroundStyle(.secondary)
+            if searchText.isEmpty {
+                Text("Menu bar → Load Demo Content")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -233,6 +258,12 @@ struct PickerView: View {
         guard let id = selectedID,
               let row = displayedItems.first(where: { $0.id == id }) else { return }
         previewRow(row)
+    }
+
+    private func deleteSelection() {
+        guard let id = selectedID else { return }
+        store.delete(id: id)
+        updateDisplayedItems(preservingSelection: false)
     }
 
     private func previewRow(_ row: PickerDisplayedRow) {

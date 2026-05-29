@@ -105,6 +105,18 @@ final class HistoryStore: ObservableObject {
         items.first { $0.id == id }
     }
 
+    /// Replaces the entire history (used by demo mode and "clear all").
+    func replaceAll(with newItems: [ClipboardItem]) {
+        items = Array(newItems.prefix(Self.maxItems))
+        persist()
+    }
+
+    /// Loads fictional sample clips for App Review. Safe to call from the menu at any time.
+    func loadDemoContent(replacingExisting: Bool = true) {
+        guard replacingExisting || items.isEmpty else { return }
+        replaceAll(with: DemoSeedData.makeItems())
+    }
+
     // MARK: - Persistence
 
     private func persist() {
