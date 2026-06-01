@@ -19,6 +19,8 @@ final class AppSettings: ObservableObject {
     @Published var isPrivateModeEnabled: Bool       { didSet { save(isPrivateModeEnabled, key: .isPrivateModeEnabled) } }
     /// Last chosen private mode duration in minutes. 0 = indefinite.
     @Published var lastPrivateModeDurationMinutes: Int { didSet { save(lastPrivateModeDurationMinutes, key: .lastPrivateModeDurationMinutes) } }
+    /// Wall-clock expiration for an active timed Private Mode session.
+    @Published var privateModeExpiresAt: Date? { didSet { saveOptionalDate(privateModeExpiresAt, key: .privateModeExpiresAt) } }
 
     // MARK: - Images
     @Published var ocrEnabled: Bool                { didSet { save(ocrEnabled, key: .ocrEnabled) } }
@@ -47,6 +49,7 @@ final class AppSettings: ObservableObject {
         autoPasteEnabled                  = d.boolOrDefault(key: .autoPasteEnabled, default: true)
         isPrivateModeEnabled              = d.bool(forKey: Key.isPrivateModeEnabled.rawValue)
         lastPrivateModeDurationMinutes    = d.intOrDefault(key: .lastPrivateModeDurationMinutes, default: 0)
+        privateModeExpiresAt              = d.object(forKey: Key.privateModeExpiresAt.rawValue) as? Date
         ocrEnabled                = d.boolOrDefault(key: .ocrEnabled, default: true)
         stripImageMetadata        = d.bool(forKey: Key.stripImageMetadata.rawValue)
         imageMaxDimensionEnabled  = d.bool(forKey: Key.imageMaxDimensionEnabled.rawValue)
@@ -67,10 +70,18 @@ final class AppSettings: ObservableObject {
         UserDefaults.standard.set(value, forKey: key.rawValue)
     }
 
+    private func saveOptionalDate(_ value: Date?, key: Key) {
+        if let value {
+            UserDefaults.standard.set(value, forKey: key.rawValue)
+        } else {
+            UserDefaults.standard.removeObject(forKey: key.rawValue)
+        }
+    }
+
     fileprivate enum Key: String {
         case historyCountLimit, historySizeLimitEnabled, historySizeLimitMB
         case historyAgeLimitEnabled, historyAgeLimitDays
-        case autoPasteEnabled, isPrivateModeEnabled, lastPrivateModeDurationMinutes
+        case autoPasteEnabled, isPrivateModeEnabled, lastPrivateModeDurationMinutes, privateModeExpiresAt
         case ocrEnabled, stripImageMetadata
         case imageMaxDimensionEnabled, imageMaxDimension
         case imageSizeLimitEnabled, imageSizeLimitMB

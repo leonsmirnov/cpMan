@@ -775,17 +775,20 @@ final class IgnoreListServiceTests: XCTestCase {
 final class PrivateModeServiceTests: XCTestCase {
     private var wasPrivate = false
     private var lastMinutes = 0
+    private var previousExpiresAt: Date?
 
     override func setUp() async throws {
         try await super.setUp()
         wasPrivate = AppSettings.shared.isPrivateModeEnabled
         lastMinutes = AppSettings.shared.lastPrivateModeDurationMinutes
+        previousExpiresAt = AppSettings.shared.privateModeExpiresAt
         PrivateModeService.shared.disable()
     }
 
     override func tearDown() async throws {
         PrivateModeService.shared.disable()
         AppSettings.shared.lastPrivateModeDurationMinutes = lastMinutes
+        AppSettings.shared.privateModeExpiresAt = previousExpiresAt
         AppSettings.shared.isPrivateModeEnabled = wasPrivate
         try await super.tearDown()
     }
@@ -794,22 +797,49 @@ final class PrivateModeServiceTests: XCTestCase {
         PrivateModeService.shared.enable(minutes: 0)
         XCTAssertTrue(AppSettings.shared.isPrivateModeEnabled)
         XCTAssertEqual(AppSettings.shared.lastPrivateModeDurationMinutes, 0)
+        XCTAssertNil(AppSettings.shared.privateModeExpiresAt)
     }
 
     func testEnableTimedPersistsLastDuration() {
+        let before = Date()
         PrivateModeService.shared.enable(minutes: 60)
         XCTAssertTrue(AppSettings.shared.isPrivateModeEnabled)
         XCTAssertEqual(AppSettings.shared.lastPrivateModeDurationMinutes, 60)
+        XCTAssertGreaterThan(AppSettings.shared.privateModeExpiresAt ?? .distantPast, before)
     }
 
     func testDisableClearsPrivateMode() {
         PrivateModeService.shared.enable(minutes: 15)
         PrivateModeService.shared.disable()
         XCTAssertFalse(AppSettings.shared.isPrivateModeEnabled)
+        XCTAssertNil(AppSettings.shared.privateModeExpiresAt)
     }
 
     func testDurationsMenuHasExpectedPresets() {
         XCTAssertEqual(PrivateModeService.durations.map(\.id), [15, 30, 60, 120, 0])
+    }
+
+    func testRestoreBeforeTimedExpirationKeepsPrivateModeEnabled() {
+        let now = Date()
+        AppSettings.shared.isPrivateModeEnabled = true
+        AppSettings.shared.privateModeExpiresAt = now.addingTimeInterval(300)
+
+        PrivateModeService.shared.restorePersistedState(now: now)
+
+        XCTAssertTrue(AppSettings.shared.isPrivateModeEnabled,
+                      "Relaunch before timed Private Mode expires must keep recording paused")
+        XCTAssertEqual(AppSettings.shared.privateModeExpiresAt, Optional(now.addingTimeInterval(300)))
+    }
+
+    func testRestoreAfterTimedExpirationDisablesPrivateMode() {
+        let now = Date()
+        AppSettings.shared.isPrivateModeEnabled = true
+        AppSettings.shared.privateModeExpiresAt = now.addingTimeInterval(-1)
+
+        PrivateModeService.shared.restorePersistedState(now: now)
+
+        XCTAssertFalse(AppSettings.shared.isPrivateModeEnabled)
+        XCTAssertNil(AppSettings.shared.privateModeExpiresAt)
     }
 }
 
