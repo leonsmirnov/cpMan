@@ -431,6 +431,52 @@ final class PasteAsPlainTextTests: XCTestCase {
     }
 }
 
+// MARK: - PasteService pasteboard write safety
+
+@MainActor
+final class PasteboardWriteSafetyTests: XCTestCase {
+    func testMissingImageDoesNotClearExistingPasteboardContents() {
+        let sentinel = seedPasteboard()
+        let item = ClipboardItem(
+            contentType: .image,
+            textValue: nil,
+            imageFilePath: "/tmp/cpman-missing-\(UUID().uuidString).png"
+        )
+
+        PasteService.shared.writeToPasteboardOnly(item: item)
+
+        XCTAssertEqual(NSPasteboard.general.string(forType: .string), sentinel,
+                       "Missing image payload must not clear the user's current clipboard")
+    }
+
+    func testMalformedTextItemDoesNotClearExistingPasteboardContents() {
+        let sentinel = seedPasteboard()
+        let item = ClipboardItem(contentType: .text, textValue: nil)
+
+        PasteService.shared.writeToPasteboardOnly(item: item)
+
+        XCTAssertEqual(NSPasteboard.general.string(forType: .string), sentinel,
+                       "Nil text payload must not clear the user's current clipboard")
+    }
+
+    func testValidTextItemReplacesPasteboardContents() {
+        _ = seedPasteboard()
+        let item = ClipboardItem(contentType: .text, textValue: "replacement")
+
+        PasteService.shared.writeToPasteboardOnly(item: item)
+
+        XCTAssertEqual(NSPasteboard.general.string(forType: .string), "replacement")
+    }
+
+    private func seedPasteboard() -> String {
+        let sentinel = "cpman-preserve-\(UUID().uuidString)"
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        XCTAssertTrue(pasteboard.setString(sentinel, forType: .string))
+        return sentinel
+    }
+}
+
 // MARK: - Edit history item
 
 @MainActor
