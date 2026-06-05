@@ -87,7 +87,31 @@ jobs:
             "dist/cpMan-${{ steps.version.outputs.label }}.dmg" \
             "${{ steps.app_path.outputs.path }}"
 
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.version.outputs.label }}
+          name: "cpMan ${{ steps.version.outputs.label }}"
+          body: |
+            ## cpMan ${{ steps.version.outputs.label }}
+
+            ### Install
+            1. Download `cpMan-${{ steps.version.outputs.label }}.dmg`
+            2. Open the DMG and drag **cpMan.app** to your Applications folder
+            3. Launch cpMan and grant Accessibility access when prompted
+
+            > **Note:** This build is ad-hoc signed (not notarized).
+            > If macOS blocks the app, right-click → Open to bypass Gatekeeper.
+          files: dist/cpMan-${{ steps.version.outputs.label }}.dmg
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.label, '-') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Upload DMG to Google Drive
+        # Google Drive is a mirror; keep GitHub Releases as the primary
+        # distribution path even if Drive credentials or APIs fail.
+        continue-on-error: true
         run: |
           # macos-15 ships an externally-managed system Python (PEP 668), so use a
           # disposable venv instead of pip-installing into the system interpreter.
@@ -124,24 +148,3 @@ jobs:
           GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
           GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
           VERSION_LABEL: ${{ steps.version.outputs.label }}
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ steps.version.outputs.label }}
-          name: "cpMan ${{ steps.version.outputs.label }}"
-          body: |
-            ## cpMan ${{ steps.version.outputs.label }}
-
-            ### Install
-            1. Download `cpMan-${{ steps.version.outputs.label }}.dmg`
-            2. Open the DMG and drag **cpMan.app** to your Applications folder
-            3. Launch cpMan and grant Accessibility access when prompted
-
-            > **Note:** This build is ad-hoc signed (not notarized).
-            > If macOS blocks the app, right-click → Open to bypass Gatekeeper.
-          files: dist/cpMan-${{ steps.version.outputs.label }}.dmg
-          draft: false
-          prerelease: ${{ contains(steps.version.outputs.label, '-') }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
