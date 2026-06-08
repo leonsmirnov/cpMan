@@ -60,7 +60,11 @@ jobs:
       - name: Locate built app
         id: app_path
         run: |
-          APP=$(find build/DerivedData -name "cpMan.app" -maxdepth 6 | head -1)
+          APP="build/DerivedData/Build/Products/Release/cpMan.app"
+          if [ ! -d "$APP" ]; then
+            echo "::error::Expected app missing: $APP"
+            exit 1
+          fi
           echo "path=$APP" >> $GITHUB_OUTPUT
           echo "Found app at: $APP"
 
@@ -87,7 +91,29 @@ jobs:
             "dist/cpMan-${{ steps.version.outputs.label }}.dmg" \
             "${{ steps.app_path.outputs.path }}"
 
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.version.outputs.label }}
+          name: "cpMan ${{ steps.version.outputs.label }}"
+          body: |
+            ## cpMan ${{ steps.version.outputs.label }}
+
+            ### Install
+            1. Download `cpMan-${{ steps.version.outputs.label }}.dmg`
+            2. Open the DMG and drag **cpMan.app** to your Applications folder
+            3. Launch cpMan and grant Accessibility access when prompted
+
+            > **Note:** This build is ad-hoc signed (not notarized).
+            > If macOS blocks the app, right-click → Open to bypass Gatekeeper.
+          files: dist/cpMan-${{ steps.version.outputs.label }}.dmg
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.label, '-') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Upload DMG to Google Drive
+        continue-on-error: true
         run: |
           # macos-15 ships an externally-managed system Python (PEP 668), so use a
           # disposable venv instead of pip-installing into the system interpreter.
@@ -117,31 +143,15 @@ jobs:
               'parents': [folder_id]
           }
           media = MediaFileUpload(dmg_path, mimetype='application/octet-stream', resumable=True)
-          f = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+          f = service.files().create(
+              body=file_metadata,
+              media_body=media,
+              fields='id',
+              supportsAllDrives=True
+          ).execute()
           print(f"✅ Uploaded to Google Drive — file ID: {f.get('id')}")
           EOF
         env:
           GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
           GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
           VERSION_LABEL: ${{ steps.version.outputs.label }}
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ steps.version.outputs.label }}
-          name: "cpMan ${{ steps.version.outputs.label }}"
-          body: |
-            ## cpMan ${{ steps.version.outputs.label }}
-
-            ### Install
-            1. Download `cpMan-${{ steps.version.outputs.label }}.dmg`
-            2. Open the DMG and drag **cpMan.app** to your Applications folder
-            3. Launch cpMan and grant Accessibility access when prompted
-
-            > **Note:** This build is ad-hoc signed (not notarized).
-            > If macOS blocks the app, right-click → Open to bypass Gatekeeper.
-          files: dist/cpMan-${{ steps.version.outputs.label }}.dmg
-          draft: false
-          prerelease: ${{ contains(steps.version.outputs.label, '-') }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
