@@ -49,13 +49,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             logger.info("Accessibility permission: not granted — picker banner will guide the user on first open")
         }
 
-        // ── One-time hotkey migration ─────────────────────────────────────────
-        // Clear stale ⇧⌘V shortcut saved by earlier builds so the new ⌃⌥V default applies.
-        let oldShortcut = KeyboardShortcuts.Shortcut(.v, modifiers: [.shift, .command])
-        if KeyboardShortcuts.getShortcut(for: .openPicker) == oldShortcut {
-            KeyboardShortcuts.reset(.openPicker)
-            logger.info("Migrated hotkey from ⇧⌘V to ⌃⌥V default")
-        }
+        // NOTE: We intentionally do NOT mutate the user's saved hotkey on launch.
+        // KeyboardShortcuts persists the user's choice in UserDefaults; the ⌃⌥V
+        // default (see KeyboardShortcuts+Names) already applies automatically when
+        // nothing is saved. A previous "migration" here reset the shortcut whenever
+        // it equalled ⇧⌘V, which silently wiped that (perfectly valid) user choice
+        // on every relaunch — making the hotkey appear non-persistent.
 
         pickerPanel = PickerPanel()
         ClipboardMonitor.shared.start()

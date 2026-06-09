@@ -23,8 +23,8 @@ targets:
           - Resources/cpMan-release.entitlements
     settings:
       base:
-        MARKETING_VERSION: "1.0.0"
-        CURRENT_PROJECT_VERSION: "1"
+        MARKETING_VERSION: "2.0.0"
+        CURRENT_PROJECT_VERSION: "6"
         PRODUCT_BUNDLE_IDENTIFIER: com.cpman.app
         SWIFT_VERSION: "6.0"
         MACOSX_DEPLOYMENT_TARGET: "14.0"
