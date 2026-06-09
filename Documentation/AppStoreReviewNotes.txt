@@ -9,6 +9,21 @@ cpMan is a menu bar clipboard manager for macOS. It records text and images you 
 
 The app uses LSUIElement: it does NOT show a Dock icon or ⌘Tab entry by design. Access is from the menu bar (clipboard icon) and the global hotkey.
 
+What's new in 2.0: image clips with on-device OCR (Vision), optional auto-paste, Private Mode (pause recording), an ignore list (skip chosen apps), and configurable history limits.
+
+────────────────────────────────────────
+1a. Demo content for review (recommended — see real data immediately)
+────────────────────────────────────────
+A fresh clipboard history is empty until you copy something. To review the UI immediately, launch cpMan in DEMO MODE, which pre-loads fictional sample clips (text + two sample images with OCR text). No real user data is used.
+
+IMPORTANT: cpMan is a menu bar agent. If it is already running, passing launch arguments does nothing — you must quit it first and start a NEW process. Run this in Terminal:
+
+  killall cpMan 2>/dev/null; open -n -a "/Applications/cpMan.app" --args -CPManDemoMode
+
+Then press ⌃⌥V to open the picker — you'll see ~12 text clips and 2 image clips. Type in the search field (e.g. "roadmap" or "git") to test filtering. Select an image clip and choose "Paste as Plain Text" to paste its OCR-extracted text.
+
+Demo mode is NOT reachable from the normal UI; it only activates via this launch flag, so regular users never see seeded content.
+
 ────────────────────────────────────────
 2. How to launch and find the UI (critical)
 ────────────────────────────────────────
@@ -53,10 +68,13 @@ There is no login, no server, and no account system.
 ────────────────────────────────────────
 5. Suggested review checklist
 ────────────────────────────────────────
-□ Launch app → menu bar icon visible
-□ Press ⌃⌥V → picker appears
-□ Copy text in Safari/Notes → appears in list
+□ Launch in demo mode (see section 1a) → menu bar icon visible
+□ Press ⌃⌥V → picker appears with sample text + image clips
+□ Type in search field → list filters
+□ Copy text in Safari/Notes → appears at top of list
+□ Select an image clip → "Paste as Plain Text" pastes its OCR text
 □ Select item → paste works (with Accessibility ON if testing auto-paste)
+□ Menu bar icon → Private Mode → recording pauses
 □ Settings → verify Hotkeys and History limits load
 
 ────────────────────────────────────────

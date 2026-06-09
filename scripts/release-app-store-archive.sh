@@ -39,19 +39,29 @@ mkdir -p "$ARCHIVE_DIR"
 echo "Resolving Swift packages…"
 xcodebuild -project cpMan.xcodeproj -resolvePackageDependencies -scheme cpMan -quiet
 
-echo "Archiving (Release, App Store signing)…"
+echo "Archiving (Release, automatic signing)…"
+# NOTE: We archive with AUTOMATIC signing and only pin the team. Passing a manual
+# CODE_SIGN_IDENTITY / PROVISIONING_PROFILE_SPECIFIER globally on the command line
+# forces those onto the KeyboardShortcuts Swift Package resource-bundle target,
+# which fails with "does not support provisioning profiles". The App Store
+# distribution identity + profile are applied later in -exportArchive via
+# ExportOptions.plist (signingStyle: manual), which re-signs the app correctly.
 xcodebuild archive \
   -project cpMan.xcodeproj \
   -scheme cpMan \
   -configuration Release \
   -destination 'generic/platform=macOS' \
   -archivePath "$ARCHIVE" \
-  CODE_SIGN_STYLE=Manual \
-  CODE_SIGN_IDENTITY="$CPMAN_APPSTORE_IDENTITY" \
-  DEVELOPMENT_TEAM="$CPMAN_DEVELOPMENT_TEAM" \
-  PROVISIONING_PROFILE_SPECIFIER="$CPMAN_APPSTORE_PROVISIONING_PROFILE"
+  -allowProvisioningUpdates \
+  CODE_SIGN_STYLE=Automatic \
+  DEVELOPMENT_TEAM="$CPMAN_DEVELOPMENT_TEAM"
 
 echo "Writing export options…"
+# Automatic signing for export lets Xcode select the matching App Store
+# application + installer certificates and the distribution provisioning profile
+# from your account. Manual pinning fails when the profile and the installer
+# certificate ("3rd Party Mac Developer Installer" / "Apple Distribution") don't
+# line up exactly — automatic resolves this the same way Xcode Organizer does.
 cat > "$EXPORT_PLIST" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -62,20 +72,14 @@ cat > "$EXPORT_PLIST" <<EOF
     <key>teamID</key>
     <string>${CPMAN_DEVELOPMENT_TEAM}</string>
     <key>signingStyle</key>
-    <string>manual</string>
-    <key>signingCertificate</key>
-    <string>${CPMAN_APPSTORE_IDENTITY}</string>
-    <key>provisioningProfiles</key>
-    <dict>
-        <key>com.cpman.app</key>
-        <string>${CPMAN_APPSTORE_PROVISIONING_PROFILE}</string>
-    </dict>
+    <string>automatic</string>
 </dict>
 </plist>
 EOF
 
 echo "Exporting .pkg for App Store Connect…"
 xcodebuild -exportArchive \
+  -allowProvisioningUpdates \
   -archivePath "$ARCHIVE" \
   -exportOptionsPlist "$EXPORT_PLIST" \
   -exportPath "$EXPORT_DIR"

@@ -90,6 +90,16 @@ final class HistoryStore: ObservableObject {
         logger.info("replaceEntireHistory: inserted \(items.count) items (no prune)")
     }
 
+    /// Loads fictional sample clips for App Review (text + images). Demo-only —
+    /// invoked from `DemoMode.applyOnLaunch` under a launch flag, never from the
+    /// customer UI. Uses `replaceEntireHistory` so the demo images written just
+    /// before insert are not wiped by a directory-level clear.
+    func loadDemoContent(replacingExisting: Bool = true) {
+        guard replacingExisting || totalCount() == 0 else { return }
+        replaceEntireHistory(with: DemoSeedData.makeItems())
+        logger.info("Loaded demo content")
+    }
+
     /// Inserts many items then runs prune once (avoids per-row prune during bulk add).
     func insertBatch(_ items: [ClipboardItem]) {
         for item in items {

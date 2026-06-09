@@ -1,38 +1,26 @@
 What's New in Version 2.0.0
 ===========================
-Paste into App Store Connect → Version → "What's New in This Version"
+Paste the text BELOW the line into App Store Connect -> Version -> "What's New in This Version".
+(Everything above the line is just a note for you and should NOT be pasted.)
 
-────────────────────────────────────────────────────────────────
-Version 2.0 is a major update with new features, smarter editing,
-and a more polished experience throughout.
+----------------------------- COPY FROM HERE -----------------------------
+Version 2.0 is a major update with new features, smarter editing, and a more polished experience throughout.
 
 NEW FEATURES
-• Image history — cpMan now captures screenshots and images you copy,
-  not just text. Images are stored locally with optional size limits.
-• Image search — OCR automatically extracts text from images so you
-  can search your image history by content.
-• Auto-paste — select any item and cpMan pastes it directly into your
-  active app. No need to manually press ⌘V. Toggle it on or off in
-  Settings → General.
-• Pin items — pin any entry to keep it at the top of the list and
-  exempt it from automatic pruning.
-• Private Mode — pause clipboard recording for 15 minutes, 1 hour,
-  or indefinitely from the menu bar icon.
-• Ignore list — add apps you never want recorded (e.g. password
-  managers) in Settings → Ignore List.
-• History limits — set count, age, or size limits for how long history
-  is kept in Settings → History.
+- Image history: cpMan now captures screenshots and images you copy, not just text. Images are stored locally with optional size limits.
+- Image search: text is automatically extracted from images (OCR) so you can search your image history by content.
+- Auto-paste: select any item and cpMan pastes it directly into your active app, with no need to press Cmd+V manually. Toggle it in Settings > General.
+- Pin items: pin any entry to keep it at the top of the list and exempt it from automatic cleanup.
+- Private Mode: pause clipboard recording for 15 minutes, 1 hour, or indefinitely from the menu bar icon.
+- Ignore list: add apps you never want recorded (for example, password managers) in Settings > Ignore List.
+- History limits: set count, age, or size limits for how long history is kept in Settings > History.
 
 IMPROVEMENTS
-• Editing is now smooth and focused — cpMan stays in focus while you
-  edit, and your edited text is automatically pasted on save. The
-  original entry is preserved in its place in history.
-• The Hotkeys screen now shows clear instructions and a
-  "Reset to Default" button so the shortcut is easy to change.
-• Settings always reopens on the General tab.
+- Editing is now smooth and focused: cpMan stays in focus while you edit, and your edited text is pasted automatically on save. The original entry stays in its place in history.
+- The Hotkeys screen now shows clear instructions and a "Reset to Default" button, so the shortcut is easy to change.
+- Settings always reopens on the General tab.
 
 FIXES
-• Fixed an issue where a custom global shortcut could be lost after
-  relaunching the app.
-• Various stability and performance improvements.
-────────────────────────────────────────────────────────────────
+- Fixed an issue where a custom global shortcut could be lost after relaunching the app.
+- Various stability and performance improvements.
+----------------------------- COPY TO HERE -----------------------------

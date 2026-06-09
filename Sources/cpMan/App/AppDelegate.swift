@@ -20,10 +20,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         enforceMenuBarOnlyActivationPolicy()
+        // Seed App Review demo clips (only under -CPManDemoMode / CPMAN_DEMO_MODE=1)
+        // before PickerPanel touches HistoryStore.shared in didFinishLaunching.
+        DemoMode.applyOnLaunch(to: HistoryStore.shared)
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         logger.info("cpMan launching (version \(Bundle.main.shortVersion, privacy: .public))")
+        if DemoMode.isActive {
+            logger.info("Demo mode active (\(HistoryStore.shared.totalCount()) sample clips)")
+        } else if DemoMode.isRequestedViaLaunchEnvironment {
+            logger.warning("Demo mode was requested but did not activate — check launch arguments")
+        }
         enforceMenuBarOnlyActivationPolicy()
 
         // ── Accessibility permission ──────────────────────────────────────────

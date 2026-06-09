@@ -1591,6 +1591,40 @@ final class ThumbnailCacheAsyncTests: XCTestCase {
     }
 }
 
+// MARK: - Demo seed data
+
+/// Verifies the App Review demo seed composition. Cleans up any image files it
+/// generates so the test leaves no artifacts in the app container.
+@MainActor
+final class DemoSeedDataTests: XCTestCase {
+    func testSeedHasTextAndImageItemsWithPinned() {
+        let items = DemoSeedData.makeItems()
+        defer {
+            for path in items.compactMap(\.imageFilePath) {
+                try? FileManager.default.removeItem(atPath: path)
+            }
+        }
+
+        let textItems = items.filter { $0.contentType == .text }
+        let imageItems = items.filter { $0.contentType == .image }
+
+        XCTAssertGreaterThanOrEqual(textItems.count, 10, "expected a meaningful set of text clips")
+        XCTAssertEqual(imageItems.count, 2, "expected two generated image clips")
+        XCTAssertTrue(items.contains { $0.isPinned }, "at least one demo clip should be pinned")
+
+        // Text clips carry text; image clips carry an on-disk file + OCR text.
+        XCTAssertTrue(textItems.allSatisfy { ($0.textValue?.isEmpty == false) })
+        for image in imageItems {
+            XCTAssertNotNil(image.imageFilePath)
+            XCTAssertEqual(image.ocrText?.isEmpty, false)
+            XCTAssertNotNil(image.imageHash)
+            if let path = image.imageFilePath {
+                XCTAssertTrue(FileManager.default.fileExists(atPath: path), "demo image should be written to disk")
+            }
+        }
+    }
+}
+
 // MARK: - Helpers
 
 /// Expose internal `intOrDefault` to tests without adding test-only API surface to AppSettings.
