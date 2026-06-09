@@ -44,23 +44,87 @@ xcodebuild clean \
 echo "Resolving Swift packages…"
 xcodebuild -project cpMan.xcodeproj -resolvePackageDependencies -scheme cpMan -quiet
 
-echo "Building Release (clean)…"
+# Signing mode is auto-detected:
+#   • CPMAN_DEVID_IDENTITY set → Developer ID signing (notarizable, public-ready)
+#   • otherwise               → ad-hoc (local testing only, NOT for distribution)
+SIGN_MODE="adhoc"
+if [ -n "${CPMAN_DEVID_IDENTITY:-}" ]; then
+  SIGN_MODE="devid"
+fi
+
+echo "Building Release (clean)… [signing mode: ${SIGN_MODE}]"
 set -o pipefail
-xcodebuild build \
-  -project cpMan.xcodeproj \
-  -scheme cpMan \
-  -configuration Release \
-  -destination 'generic/platform=macOS' \
-  -derivedDataPath build/DerivedData \
-  CODE_SIGN_IDENTITY="-" \
-  CODE_SIGNING_REQUIRED=YES \
-  CODE_SIGNING_ALLOWED=YES \
-  AD_HOC_CODE_SIGNING_ALLOWED=YES
+if [ "$SIGN_MODE" = "devid" ]; then
+  # Developer ID + Hardened Runtime (already enabled in project.yml) + secure
+  # timestamp → required for notarization. Embedded frameworks are signed too.
+  xcodebuild build \
+    -project cpMan.xcodeproj \
+    -scheme cpMan \
+    -configuration Release \
+    -destination 'generic/platform=macOS' \
+    -derivedDataPath build/DerivedData \
+    CODE_SIGN_STYLE=Manual \
+    CODE_SIGN_IDENTITY="$CPMAN_DEVID_IDENTITY" \
+    DEVELOPMENT_TEAM="${CPMAN_DEVELOPMENT_TEAM:-}" \
+    CODE_SIGNING_REQUIRED=YES \
+    CODE_SIGNING_ALLOWED=YES \
+    OTHER_CODE_SIGN_FLAGS="--timestamp"
+else
+  echo "⚠️  Building AD-HOC (local only). Set CPMAN_DEVID_IDENTITY for a notarizable, distributable build."
+  xcodebuild build \
+    -project cpMan.xcodeproj \
+    -scheme cpMan \
+    -configuration Release \
+    -destination 'generic/platform=macOS' \
+    -derivedDataPath build/DerivedData \
+    CODE_SIGN_IDENTITY="-" \
+    CODE_SIGNING_REQUIRED=YES \
+    CODE_SIGNING_ALLOWED=YES \
+    AD_HOC_CODE_SIGNING_ALLOWED=YES
+fi
 
 APP="${ROOT}/build/DerivedData/Build/Products/Release/cpMan.app"
 if [ ! -d "$APP" ]; then
   echo "❌ Expected app missing: $APP"
   exit 1
+fi
+
+# ── Notarization helpers ───────────────────────────────────────────────────
+# Returns 0 (and echoes the notarytool credential args) when creds are present.
+notary_args() {
+  if [ -n "${CPMAN_NOTARY_PROFILE:-}" ]; then
+    echo "--keychain-profile ${CPMAN_NOTARY_PROFILE}"
+    return 0
+  fi
+  if [ -n "${CPMAN_NOTARY_APPLE_ID:-}" ] && [ -n "${CPMAN_NOTARY_APP_PASSWORD:-}" ] && [ -n "${CPMAN_DEVELOPMENT_TEAM:-}" ]; then
+    echo "--apple-id ${CPMAN_NOTARY_APPLE_ID} --password ${CPMAN_NOTARY_APP_PASSWORD} --team-id ${CPMAN_DEVELOPMENT_TEAM}"
+    return 0
+  fi
+  return 1
+}
+
+NOTARIZE="no"
+if [ "$SIGN_MODE" = "devid" ]; then
+  if notary_args >/dev/null; then
+    NOTARIZE="yes"
+  else
+    echo "⚠️  Developer ID build but no notary credentials (CPMAN_NOTARY_PROFILE or"
+    echo "    CPMAN_NOTARY_APPLE_ID/CPMAN_NOTARY_APP_PASSWORD/CPMAN_DEVELOPMENT_TEAM)."
+    echo "    The DMG will be signed but NOT notarized — Gatekeeper will still warn users."
+  fi
+fi
+
+# Notarize + staple the .app before packaging so the stapled ticket travels in the DMG.
+if [ "$NOTARIZE" = "yes" ]; then
+  echo "Notarizing cpMan.app…"
+  ZIP="${ROOT}/build/cpMan-notarize.zip"
+  rm -f "$ZIP"
+  /usr/bin/ditto -c -k --keepParent "$APP" "$ZIP"
+  # shellcheck disable=SC2046
+  xcrun notarytool submit "$ZIP" $(notary_args) --wait
+  xcrun stapler staple "$APP"
+  rm -f "$ZIP"
+  echo "✅ App notarized and stapled"
 fi
 
 mkdir -p dist
@@ -79,6 +143,15 @@ create-dmg \
   --app-drop-link 450 185 \
   "$DMG_PATH" \
   "$APP"
+
+# Notarize + staple the DMG itself so the downloaded disk image passes Gatekeeper.
+if [ "$NOTARIZE" = "yes" ]; then
+  echo "Notarizing DMG…"
+  # shellcheck disable=SC2046
+  xcrun notarytool submit "$DMG_PATH" $(notary_args) --wait
+  xcrun stapler staple "$DMG_PATH"
+  echo "✅ DMG notarized and stapled"
+fi
 
 echo "Installing to /Applications (single system-wide copy)…"
 DEST="/Applications"

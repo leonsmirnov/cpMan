@@ -176,6 +176,10 @@ final class ImageProcessor {
         let url = dir.appendingPathComponent(UUID().uuidString + ".png")
         do {
             try data.write(to: url)
+            // Owner-only: clipboard images can be sensitive. Matches Exports/Previews.
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o600], ofItemAtPath: url.path
+            )
             return url
         } catch {
             logger.error("writeToDisk failed: \(error)")
@@ -187,7 +191,10 @@ final class ImageProcessor {
         let support = FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         let dir = support.appendingPathComponent("cpMan/Images", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let fm = FileManager.default
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        // Owner-only directory (defense-in-depth for the non-sandboxed path).
+        try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path)
         return dir
     }
 }

@@ -61,7 +61,7 @@ Open the archive in **Xcode → Organizer** and choose **Distribute App → App 
 
 In **App Store Connect** for cpMan:
 
-- Set **Version** to `1.0.0`, **Build** to whatever `CURRENT_PROJECT_VERSION` was used (`1` initially; bump for every new upload).
+- Set **Version** to `2.0.0` (current `MARKETING_VERSION`), **Build** to whatever `CURRENT_PROJECT_VERSION` was used (`6` currently; bump for every new upload).
 - Fill **App Privacy** (cpMan does not collect data).
 - **App Review Information → Notes**: paste the contents of `Documentation/AppStoreReviewNotes.txt`.
 - **Screenshots**, description, support URL, privacy policy URL.

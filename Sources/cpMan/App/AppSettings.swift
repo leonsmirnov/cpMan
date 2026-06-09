@@ -21,8 +21,9 @@ final class AppSettings: ObservableObject {
     @Published var lastPrivateModeDurationMinutes: Int { didSet { save(lastPrivateModeDurationMinutes, key: .lastPrivateModeDurationMinutes) } }
 
     // MARK: - Images
+    // Note: image metadata (EXIF/GPS/XMP) is ALWAYS stripped during the PNG
+    // re-encode in ImageProcessor — there is intentionally no toggle for it.
     @Published var ocrEnabled: Bool                { didSet { save(ocrEnabled, key: .ocrEnabled) } }
-    @Published var stripImageMetadata: Bool        { didSet { save(stripImageMetadata, key: .stripImageMetadata) } }
     @Published var imageMaxDimensionEnabled: Bool  { didSet { save(imageMaxDimensionEnabled, key: .imageMaxDimensionEnabled) } }
     @Published var imageMaxDimension: Int          { didSet { save(imageMaxDimension, key: .imageMaxDimension) } }
     @Published var imageSizeLimitEnabled: Bool     { didSet { save(imageSizeLimitEnabled, key: .imageSizeLimitEnabled) } }
@@ -48,7 +49,6 @@ final class AppSettings: ObservableObject {
         isPrivateModeEnabled              = d.bool(forKey: Key.isPrivateModeEnabled.rawValue)
         lastPrivateModeDurationMinutes    = d.intOrDefault(key: .lastPrivateModeDurationMinutes, default: 0)
         ocrEnabled                = d.boolOrDefault(key: .ocrEnabled, default: true)
-        stripImageMetadata        = d.bool(forKey: Key.stripImageMetadata.rawValue)
         imageMaxDimensionEnabled  = d.bool(forKey: Key.imageMaxDimensionEnabled.rawValue)
         imageMaxDimension         = d.intOrDefault(key: .imageMaxDimension, default: 2048)
         imageSizeLimitEnabled     = d.bool(forKey: Key.imageSizeLimitEnabled.rawValue)
@@ -71,7 +71,7 @@ final class AppSettings: ObservableObject {
         case historyCountLimit, historySizeLimitEnabled, historySizeLimitMB
         case historyAgeLimitEnabled, historyAgeLimitDays
         case autoPasteEnabled, isPrivateModeEnabled, lastPrivateModeDurationMinutes
-        case ocrEnabled, stripImageMetadata
+        case ocrEnabled
         case imageMaxDimensionEnabled, imageMaxDimension
         case imageSizeLimitEnabled, imageSizeLimitMB
         case ignoredBundleIds

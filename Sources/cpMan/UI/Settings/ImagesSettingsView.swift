@@ -5,9 +5,14 @@ struct ImagesSettingsView: View {
 
     var body: some View {
         Form {
-            Section("Processing") {
+            Section {
                 Toggle("Enable OCR — extract text from images (searchable)", isOn: $settings.ocrEnabled)
-                Toggle("Strip image metadata (EXIF) on save", isOn: $settings.stripImageMetadata)
+            } header: {
+                Text("Processing")
+            } footer: {
+                Text("Image metadata (EXIF, GPS, XMP) is always removed when an image is saved.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Downscale on Capture") {

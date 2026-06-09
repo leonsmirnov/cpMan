@@ -37,7 +37,9 @@ First-time flow:
   • That deep-links toward System Settings → Privacy & Security → Accessibility.
   • Enable cpMan in the list (user may need to add the app with +, picking /Applications/cpMan.app).
 
-Without Accessibility, cpMan still works: selection copies to the clipboard and the user can press ⌘V manually.
+Without Accessibility, cpMan still works fully: selecting an item copies it to the clipboard and the user presses ⌘V manually. Auto-paste can be turned OFF in Settings → General, in which case the app never requests Accessibility at all.
+
+Scope of Accessibility use (important): cpMan uses Accessibility ONLY to synthesize a single ⌘V keystroke into the previously active app after the user explicitly selects an item. It does NOT read, log, or monitor keystrokes from other apps, and it respects Secure Event Input (it will not act while a secure/password field is focused).
 
 There is no login, no server, and no account system.
 

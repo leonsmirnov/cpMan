@@ -25,6 +25,7 @@ targets:
       base:
         MARKETING_VERSION: "2.0.0"
         CURRENT_PROJECT_VERSION: "6"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         PRODUCT_BUNDLE_IDENTIFIER: com.cpman.app
         SWIFT_VERSION: "6.0"
         MACOSX_DEPLOYMENT_TARGET: "14.0"

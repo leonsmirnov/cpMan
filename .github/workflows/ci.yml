@@ -10,6 +10,26 @@ on:
   workflow_dispatch:
 
 jobs:
+  lint:
+    name: SwiftLint
+    runs-on: macos-15
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install SwiftLint
+        run: brew install swiftlint
+
+      # Advisory for now: surfaces violations in the logs without failing the
+      # build. The existing tree has intentional exceptions (e.g. the force-try
+      # in HistoryStore's migration fallback). Flip `continue-on-error` to false
+      # once the backlog is burned down to make lint a hard gate.
+      - name: Run SwiftLint
+        continue-on-error: true
+        run: swiftlint lint --reporter github-actions-logging
+
   test:
     name: Build & Test
     runs-on: macos-15

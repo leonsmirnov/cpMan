@@ -187,7 +187,7 @@ final class PickerPanel: NSPanel {
     /// with the previous app). Auto-close is suppressed via `isEditing`.
     private func beginEditing() {
         isEditing = true
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate()
         makeKeyAndOrderFront(nil)
     }
 
