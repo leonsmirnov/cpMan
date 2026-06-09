@@ -431,6 +431,43 @@ final class PasteAsPlainTextTests: XCTestCase {
     }
 }
 
+// MARK: - PasteService unavailable payloads
+
+@MainActor
+final class PasteServiceUnavailablePayloadTests: XCTestCase {
+    private let sentinel = "keep-current-clipboard"
+
+    func testMissingImagePayloadDoesNotClearExistingPasteboard() {
+        seedPasteboardWithSentinel()
+        defer { NSPasteboard.general.clearContents() }
+        let item = ClipboardItem(
+            contentType: .image,
+            imageFilePath: "/tmp/cpman-missing-\(UUID().uuidString).png"
+        )
+
+        PasteService.shared.writeToPasteboardOnly(item: item)
+
+        XCTAssertEqual(NSPasteboard.general.string(forType: .string), sentinel)
+    }
+
+    func testNilTextPayloadDoesNotClearExistingPasteboard() {
+        seedPasteboardWithSentinel()
+        defer { NSPasteboard.general.clearContents() }
+        let item = ClipboardItem(contentType: .text, textValue: nil)
+
+        PasteService.shared.writeToPasteboardOnly(item: item)
+
+        XCTAssertEqual(NSPasteboard.general.string(forType: .string), sentinel)
+    }
+
+    private func seedPasteboardWithSentinel() {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        XCTAssertTrue(pasteboard.setString(sentinel, forType: .string))
+        ClipboardMonitor.shared.acknowledgeCurrentPasteboard()
+    }
+}
+
 // MARK: - Edit history item
 
 @MainActor
