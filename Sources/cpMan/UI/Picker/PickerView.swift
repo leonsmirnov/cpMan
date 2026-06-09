@@ -15,6 +15,19 @@ struct PickerView: View {
     let onSelect:  (ClipboardItem) -> Void
     let onDismiss: () -> Void
 
+    /// Fired the moment the user taps "Edit" so the host panel can activate the
+    /// app (a non-activating panel otherwise leaves keyboard focus with the
+    /// previous app, so the edit sheet can't be typed into without a manual click).
+    var onBeginEdit: () -> Void = {}
+
+    /// Fired when the user cancels editing so the host panel can restore the
+    /// normal browse state (return focus to the original app, keep picker open).
+    var onCancelEdit: () -> Void = {}
+
+    /// Fired when the user saves an edit. The host panel creates the new entry,
+    /// closes the picker, and pastes the edited content into the original app.
+    var onSaveEdit: (_ text: String, _ sourceApp: String?, _ sourceBundleId: String?) -> Void = { _, _, _ in }
+
     /// Fired by the hotkey handler when the picker is already visible.
     /// Each emission moves the selection one step down.
     var navigateDownPublisher: AnyPublisher<Void, Never>? = nil
@@ -77,17 +90,13 @@ struct PickerView: View {
                 originalText: session.originalText,
                 editingText: $editingText
             ) { savedText in
-                let newItem = ClipboardItem(
-                    sourceApp: session.sourceApp,
-                    sourceBundleId: session.sourceBundleId,
-                    contentType: .text,
-                    textValue: savedText
-                )
-                store.insert(newItem)
-                reload()
+                // The original entry is left untouched in place; the panel inserts
+                // the edited text as a brand-new entry at the top and pastes it.
                 textEditSession = nil
+                onSaveEdit(savedText, session.sourceApp, session.sourceBundleId)
             } onCancel: {
                 textEditSession = nil
+                onCancelEdit()
             }
         }
         // Reset state every time the picker opens.
@@ -260,6 +269,8 @@ struct PickerView: View {
                                         sourceApp: row.sourceApp,
                                         sourceBundleId: row.sourceBundleId
                                     )
+                                    // Keep focus on cpMan so the edit sheet is usable immediately.
+                                    onBeginEdit()
                                 } label: {
                                     Label("Edit", systemImage: "pencil")
                                 }
@@ -599,6 +610,8 @@ private struct EditTextView: View {
     let onSave:   (String) -> Void
     let onCancel: () -> Void
 
+    @FocusState private var isEditorFocused: Bool
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Edit Clipboard Item")
@@ -610,9 +623,11 @@ private struct EditTextView: View {
                 .background(.quaternary.opacity(0.5))
                 .clipShape(RoundedRectangle(cornerRadius: 6))
                 .frame(minHeight: 160)
+                .focused($isEditorFocused)
+                .onAppear { isEditorFocused = true }
 
             if editingText != originalText {
-                Text("A new history entry will be created with your changes.")
+                Text("Saving keeps the original entry and adds your edited text as a new entry, then pastes it.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }

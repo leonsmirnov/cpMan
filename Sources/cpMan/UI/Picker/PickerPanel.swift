@@ -35,6 +35,14 @@ final class PickerPanel: NSPanel {
     nonisolated(unsafe) private var resignKeyObserver: NSObjectProtocol?
     nonisolated(unsafe) private var workspaceActivateObserver: NSObjectProtocol?
 
+    /// The app that was frontmost when the picker opened. Captured once per show()
+    /// so paste targets the correct app even after we activate cpMan for editing.
+    private var sessionTargetApp: NSRunningApplication?
+
+    /// True while the edit sheet is open. Suppresses the auto-close observers so
+    /// activating cpMan (to give the editor keyboard focus) does not dismiss the picker.
+    private var isEditing = false
+
     init() {
         super.init(
             contentRect: NSRect(x: 0, y: 0, width: 440, height: 520),
@@ -57,6 +65,11 @@ final class PickerPanel: NSPanel {
             PickerView(
                 onSelect:             { [weak self] item in self?.handleSelection(item) },
                 onDismiss:            { [weak self] in self?.close() },
+                onBeginEdit:          { [weak self] in self?.beginEditing() },
+                onCancelEdit:         { [weak self] in self?.cancelEditing() },
+                onSaveEdit:           { [weak self] text, app, bundle in
+                    self?.commitEditedText(text, sourceApp: app, sourceBundleId: bundle)
+                },
                 navigateDownPublisher: navigatePublisher,
                 refreshPublisher:      refreshPublisher
             )
@@ -75,7 +88,7 @@ final class PickerPanel: NSPanel {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
-                guard let self, self.isVisible else { return }
+                guard let self, self.isVisible, !self.isEditing else { return }
                 self.close()
             }
         }
@@ -88,7 +101,7 @@ final class PickerPanel: NSPanel {
             let activatedBundle = (notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?
                 .bundleIdentifier
             Task { @MainActor [weak self] in
-                guard let self, self.isVisible else { return }
+                guard let self, self.isVisible, !self.isEditing else { return }
                 if activatedBundle == Bundle.main.bundleIdentifier { return }
                 self.close()
             }
@@ -119,6 +132,10 @@ final class PickerPanel: NSPanel {
     }
 
     func show() {
+        // Capture the target app BEFORE the panel becomes key so editing (which
+        // activates cpMan) can still paste into the app the user was working in.
+        sessionTargetApp = NSWorkspace.shared.frontmostApplication
+        isEditing = false
         center()
         makeKeyAndOrderFront(nil)
         // Explicitly tell PickerView to reload its item list and reset selection.
@@ -161,6 +178,56 @@ final class PickerPanel: NSPanel {
             if let found = firstDescendant(type, in: sub) { return found }
         }
         return nil
+    }
+
+    // MARK: - Editing
+
+    /// User tapped "Edit". Activate cpMan so the edit sheet's text editor gets
+    /// keyboard focus immediately (a non-activating panel otherwise leaves focus
+    /// with the previous app). Auto-close is suppressed via `isEditing`.
+    private func beginEditing() {
+        isEditing = true
+        NSApp.activate(ignoringOtherApps: true)
+        makeKeyAndOrderFront(nil)
+    }
+
+    /// User cancelled editing. Restore the normal browse state: hand focus back to
+    /// the original app and keep the picker open and key for continued browsing.
+    private func cancelEditing() {
+        guard isVisible else { isEditing = false; return }
+        sessionTargetApp?.activate()
+        makeKeyAndOrderFront(nil)
+        focusSearchTextField()
+        // Keep suppressing auto-close briefly so the focus handoff above (which
+        // fires resign-key / activate notifications) does not dismiss the picker.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            self?.isEditing = false
+        }
+    }
+
+    /// User saved an edit. The original entry is left untouched; the edited text
+    /// is inserted as a new entry at the top, then pasted into the original app
+    /// (respecting the auto-paste setting), and the picker closes.
+    private func commitEditedText(_ text: String, sourceApp: String?, sourceBundleId: String?) {
+        let newItem = ClipboardItem(
+            sourceApp: sourceApp,
+            sourceBundleId: sourceBundleId,
+            contentType: .text,
+            textValue: text
+        )
+        HistoryStore.shared.insert(newItem)
+
+        let targetApp = sessionTargetApp
+        isEditing = false
+        close()
+
+        // Return focus to the app the user was in before pasting the edited text.
+        targetApp?.activate()
+        if AppSettings.shared.autoPasteEnabled {
+            PasteService.shared.paste(item: newItem, into: targetApp)
+        } else {
+            PasteService.shared.writeToPasteboardOnly(item: newItem)
+        }
     }
 
     private func handleSelection(_ item: ClipboardItem) {
