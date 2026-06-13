@@ -67,13 +67,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pickerPanel = PickerPanel()
         ClipboardMonitor.shared.start()
 
-        // If the app was quit while a timed Private Mode session was active,
-        // the timer is lost — disable Private Mode so recording resumes.
-        let settings = AppSettings.shared
-        if settings.isPrivateModeEnabled && settings.lastPrivateModeDurationMinutes > 0 {
-            settings.isPrivateModeEnabled = false
-            logger.info("Private Mode was timed; reset to off after relaunch")
-        }
+        // Re-arm or expire a timed Private Mode session that was active at last quit.
+        // (The auto-off timer is in-memory only; an indefinite session stays paused.)
+        PrivateModeService.shared.restoreOnLaunch()
 
         KeyboardShortcuts.onKeyUp(for: .openPicker) { [weak self] in
             Task { @MainActor in

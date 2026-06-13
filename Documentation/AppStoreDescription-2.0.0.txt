@@ -17,7 +17,7 @@ WHAT IT DOES
 • Captures both text and images you copy, including screenshots.
 • On-device OCR reads the text inside images, so you can search your image history by its contents.
 • Opens a fast floating picker from anywhere via a global hotkey.
-• Filter the list as you type. Press Return to paste, Space to preview a long clip, and 1–9 to grab one of the top items instantly.
+• Filter the list as you type. Press Return to paste, Space to preview a long clip, and ⌘1–⌘9 to grab one of the top items instantly.
 • Auto-paste (optional): selecting an item pastes it straight into your active app, with no manual ⌘V. Toggle it in Settings.
 • Pin the items you use most so they stay at the top and are never pruned.
 • Private Mode: pause recording for 15 minutes, 1 hour, or until you turn it back on — straight from the menu bar.

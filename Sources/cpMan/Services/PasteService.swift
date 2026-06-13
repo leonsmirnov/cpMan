@@ -31,14 +31,9 @@ final class PasteService {
         let targetName  = targetApp?.localizedName ?? "unknown"
         let targetPID   = targetApp?.processIdentifier
 
-        NSLog("[cpMan] paste — AX:%@  secureInput:%@  target:%@  pid:%@",
-              axGranted ? "✓" : "✗",
-              secureInput ? "✓" : "✗",
-              targetName,
-              targetPID.map { "\($0)" } ?? "nil")
+        logger.debug("paste — AX:\(axGranted), secureInput:\(secureInput), target:\(targetName, privacy: .private), pid:\(targetPID ?? -1)")
 
         guard !secureInput else {
-            NSLog("[cpMan] paste BLOCKED — Secure Event Input active")
             logger.warning("Paste blocked: Secure Event Input active")
             return
         }
@@ -46,8 +41,7 @@ final class PasteService {
         writeToPasteboard(item: item)
 
         guard axGranted else {
-            NSLog("[cpMan] paste BLOCKED — Accessibility not granted. Launch from /Applications and grant AX once.")
-            logger.warning("Paste blocked: Accessibility not granted")
+            logger.warning("Paste blocked: Accessibility not granted (launch from /Applications and grant AX once)")
             return
         }
 
@@ -83,9 +77,7 @@ final class PasteService {
         pasteboard.setString(plainText, forType: .string)
         ClipboardMonitor.shared.acknowledgeCurrentPasteboard()
 
-        NSLog("[cpMan] pasteAsPlainText — AX:%@  target:%@",
-              AccessibilityService.shared.isAccessibilityGranted ? "✓" : "✗",
-              targetApp?.localizedName ?? "nil")
+        logger.debug("pasteAsPlainText — AX:\(AccessibilityService.shared.isAccessibilityGranted), target:\(targetApp?.localizedName ?? "nil", privacy: .private)")
 
         guard AccessibilityService.shared.isAccessibilityGranted else { return }
         let pid = targetApp?.processIdentifier
@@ -154,12 +146,11 @@ final class PasteService {
         if let pid = targetPID {
             keyDown?.postToPid(pid)
             keyUp?.postToPid(pid)
-            NSLog("[cpMan] ⌘V via CGEvent → pid %d ✓", pid)
+            logger.debug("Synthesised ⌘V via CGEvent → pid \(pid)")
         } else {
             keyDown?.post(tap: .cgSessionEventTap)
             keyUp?.post(tap: .cgSessionEventTap)
-            NSLog("[cpMan] ⌘V via CGEvent → session tap ✓")
+            logger.debug("Synthesised ⌘V via CGEvent → session tap")
         }
-        logger.debug("Synthesised ⌘V via CGEvent")
     }
 }

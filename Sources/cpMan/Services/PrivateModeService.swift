@@ -31,24 +31,54 @@ final class PrivateModeService {
         settings.lastPrivateModeDurationMinutes = minutes
 
         cancelTimer()
-        guard minutes > 0 else { return }
+        guard minutes > 0 else {
+            settings.privateModeEndEpoch = 0   // indefinite — no auto-off
+            return
+        }
 
+        let end = Date().addingTimeInterval(Double(minutes) * 60)
+        settings.privateModeEndEpoch = end.timeIntervalSinceReferenceDate
+        scheduleAutoOff(at: end)
+    }
+
+    /// Disable private mode and cancel any running timer.
+    func disable() {
+        cancelTimer()
+        let settings = AppSettings.shared
+        settings.isPrivateModeEnabled = false
+        settings.privateModeEndEpoch  = 0
+    }
+
+    /// Re-arms (or expires) a timed Private Mode session after a relaunch. The auto-off
+    /// timer lives only in memory, so without this a "2 hours" session would silently
+    /// keep recording paused forever, or be dropped entirely. Call once on launch.
+    func restoreOnLaunch() {
+        let settings = AppSettings.shared
+        guard settings.isPrivateModeEnabled else { return }
+        let epoch = settings.privateModeEndEpoch
+        guard epoch > 0 else { return }   // indefinite session — stay paused, no timer
+
+        let end = Date(timeIntervalSinceReferenceDate: epoch)
+        if Date() >= end {
+            disable()   // the window already elapsed while the app was not running
+        } else {
+            scheduleAutoOff(at: end)
+        }
+    }
+
+    // MARK: - Private
+
+    private func scheduleAutoOff(at end: Date) {
+        let seconds = end.timeIntervalSinceNow
+        guard seconds > 0 else { disable(); return }
         timerTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(minutes) * 60 * 1_000_000_000)
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
             guard !Task.isCancelled else { return }
             await MainActor.run {
                 self?.disable()
             }
         }
     }
-
-    /// Disable private mode and cancel any running timer.
-    func disable() {
-        cancelTimer()
-        AppSettings.shared.isPrivateModeEnabled = false
-    }
-
-    // MARK: - Private
 
     private func cancelTimer() {
         timerTask?.cancel()

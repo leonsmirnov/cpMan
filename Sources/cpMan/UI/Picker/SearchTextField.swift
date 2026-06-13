@@ -24,8 +24,6 @@ struct SearchTextField: NSViewRepresentable {
     var onPlainTextReturn:  () -> Void      = {}
     var onEscape:           () -> Void      = {}
     var onSpace:            () -> Void      = {}
-    /// Fires when the user presses digit 1–9 while the field is empty (quick-select shortcut).
-    var onNumericShortcut:  (Int) -> Void   = { _ in }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -68,19 +66,6 @@ struct SearchTextField: NSViewRepresentable {
         func controlTextDidChange(_ obj: Notification) {
             guard let field = obj.object as? NSTextField else { return }
             let newText = field.stringValue
-
-            // Digit shortcut: user pressed 1-9 while the field was empty.
-            // Treat as "select item N" rather than starting a search query.
-            if previousText.isEmpty,
-               newText.count == 1,
-               let n = Int(newText),
-               (1...9).contains(n) {
-                field.stringValue = ""
-                previousText      = ""
-                parent.text       = ""
-                parent.onNumericShortcut(n)
-                return
-            }
 
             // Space shortcut: Space while field is empty → preview selected item.
             if previousText.isEmpty, newText == " " {
