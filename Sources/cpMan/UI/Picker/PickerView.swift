@@ -110,7 +110,16 @@ struct PickerView: View {
         .onReceive(navigateDownPublisher ?? Empty().eraseToAnyPublisher()) { _ in
             moveSelection(+1)
         }
-        .background {
+        .background { keyboardShortcuts }
+    }
+
+    /// Off-screen buttons hosted only for their key equivalents:
+    /// ⌘P toggles pin on the selection; ⌘1…⌘9 quick-select a top item.
+    /// Quick-select uses ⌘ (not a bare digit) so the user can type digits into the
+    /// search field — otherwise a leading "2" would select item 2 instead of searching.
+    @ViewBuilder
+    private var keyboardShortcuts: some View {
+        ZStack {
             Button("Pin") {
                 if let id = selectedID, let live = store.item(for: id) {
                     store.togglePin(live)
@@ -119,6 +128,12 @@ struct PickerView: View {
             }
             .keyboardShortcut("p", modifiers: .command)
             .hidden()
+
+            ForEach(1...9, id: \.self) { n in
+                Button("Select \(n)") { selectByNumber(n) }
+                    .keyboardShortcut(KeyEquivalent(Character("\(n)")), modifiers: .command)
+                    .hidden()
+            }
         }
     }
 
@@ -172,8 +187,7 @@ struct PickerView: View {
                 onReturn:          { commitSelection() },
                 onPlainTextReturn: { commitSelectionAsPlainText() },
                 onEscape:          { onDismiss() },
-                onSpace:           { previewSelection() },
-                onNumericShortcut: { n in selectByNumber(n) }
+                onSpace:           { previewSelection() }
             )
             .frame(height: 20)
             .onChange(of: searchText) { _, new in

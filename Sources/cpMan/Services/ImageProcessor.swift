@@ -41,9 +41,13 @@ final class ImageProcessor {
             }
 
             // P5: early rough bail-out before allocating a full PNG encode.
+            // Estimate from the representation's PIXEL dimensions (not point size),
+            // so a Retina-captured bitmap isn't under-counted by up to 4×.
             if sizeLimitEnabled, sizeLimitMB > 0 {
                 let maxBytes = sizeLimitMB * 1_048_576
-                let roughBytes = Int(processed.size.width * processed.size.height) * 4
+                let pixelW = processed.representations.first?.pixelsWide ?? Int(processed.size.width)
+                let pixelH = processed.representations.first?.pixelsHigh ?? Int(processed.size.height)
+                let roughBytes = pixelW * pixelH * 4
                 if roughBytes > maxBytes * 8 {
                     logger.warning("Image too large (~\(roughBytes / 1_048_576)MB estimated), skipping capture")
                     return nil
@@ -93,26 +97,28 @@ final class ImageProcessor {
     /// Exports an image item as a PNG file for pasteboard use. Used by "Copy as File" action.
     /// Files are written to a dedicated Exports directory with owner-only permissions.
     /// Stale exports older than 5 minutes are cleaned up on each call.
+    ///
+    /// The stored clip is already a PNG (see `writeToDisk`), so we copy the bytes
+    /// directly instead of decoding the image into a bitmap and re-encoding a new
+    /// PNG on the main actor — that avoids a needless rasterize/compress hitch at
+    /// the exact moment the user expects an instant paste.
     func exportAsFile(item: ClipboardItem) -> URL? {
-        guard let path = item.imageFilePath,
-              let image = NSImage(contentsOfFile: path),
-              let data = Self.pngData(from: image)
-        else {
-            logger.error("exportAsFile: failed to load or encode image for item \(item.id)")
+        guard let path = item.imageFilePath else {
+            logger.error("exportAsFile: image item \(item.id) has no file path")
             return nil
         }
 
         let exportDir = exportsDirectory
         let fileURL = exportDir.appendingPathComponent(UUID().uuidString + ".png")
         do {
-            try data.write(to: fileURL)
+            try FileManager.default.copyItem(at: URL(fileURLWithPath: path), to: fileURL)
             try FileManager.default.setAttributes(
                 [.posixPermissions: 0o600], ofItemAtPath: fileURL.path
             )
             logger.debug("Exported image to: \(fileURL.lastPathComponent)")
             return fileURL
         } catch {
-            logger.error("exportAsFile: write failed: \(error)")
+            logger.error("exportAsFile: copy failed: \(error)")
             return nil
         }
     }
@@ -144,16 +150,32 @@ final class ImageProcessor {
 
     // MARK: - Private helpers
 
+    /// Downscales via a Core Graphics bitmap context. Unlike `NSImage.lockFocus()`,
+    /// `CGContext` does not depend on a window-server graphics context, so this is
+    /// safe to run off the main thread (this method is called inside `Task.detached`).
     nonisolated private static func resize(_ image: NSImage, maxDimension: CGFloat) -> NSImage {
         let size = image.size
         guard size.width > maxDimension || size.height > maxDimension else { return image }
         let scale   = maxDimension / max(size.width, size.height)
-        let newSize = CGSize(width: size.width * scale, height: size.height * scale)
-        let result  = NSImage(size: newSize)
-        result.lockFocus()
-        image.draw(in: NSRect(origin: .zero, size: newSize))
-        result.unlockFocus()
-        return result
+        let newSize = CGSize(width: (size.width * scale).rounded(), height: (size.height * scale).rounded())
+
+        guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return image }
+        let width  = Int(newSize.width)
+        let height = Int(newSize.height)
+        guard width > 0, height > 0, let context = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return image }
+
+        context.interpolationQuality = .high
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+        guard let scaled = context.makeImage() else { return image }
+        return NSImage(cgImage: scaled, size: newSize)
     }
 
     /// Encodes image as PNG via CGImage. Round-trip through CGImage unconditionally

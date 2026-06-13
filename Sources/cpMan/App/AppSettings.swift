@@ -19,6 +19,11 @@ final class AppSettings: ObservableObject {
     @Published var isPrivateModeEnabled: Bool       { didSet { save(isPrivateModeEnabled, key: .isPrivateModeEnabled) } }
     /// Last chosen private mode duration in minutes. 0 = indefinite.
     @Published var lastPrivateModeDurationMinutes: Int { didSet { save(lastPrivateModeDurationMinutes, key: .lastPrivateModeDurationMinutes) } }
+    /// Absolute end time of a *timed* Private Mode session, as
+    /// `Date.timeIntervalSinceReferenceDate`. 0 = no timed session (off or indefinite).
+    /// Persisted so a timed session can be re-armed (or expired) after a relaunch
+    /// instead of being silently dropped — the in-memory timer does not survive quit.
+    @Published var privateModeEndEpoch: Double { didSet { save(privateModeEndEpoch, key: .privateModeEndEpoch) } }
 
     // MARK: - Images
     @Published var ocrEnabled: Bool                { didSet { save(ocrEnabled, key: .ocrEnabled) } }
@@ -39,7 +44,7 @@ final class AppSettings: ObservableObject {
     // MARK: - Init
     private init() {
         let d = UserDefaults.standard
-        historyCountLimit         = d.intOrDefault(key: .historyCountLimit, default: 10)
+        historyCountLimit         = d.intOrDefault(key: .historyCountLimit, default: 200)
         historySizeLimitEnabled   = d.bool(forKey: Key.historySizeLimitEnabled.rawValue)
         historySizeLimitMB        = d.intOrDefault(key: .historySizeLimitMB, default: 500)
         historyAgeLimitEnabled    = d.bool(forKey: Key.historyAgeLimitEnabled.rawValue)
@@ -47,6 +52,7 @@ final class AppSettings: ObservableObject {
         autoPasteEnabled                  = d.boolOrDefault(key: .autoPasteEnabled, default: true)
         isPrivateModeEnabled              = d.bool(forKey: Key.isPrivateModeEnabled.rawValue)
         lastPrivateModeDurationMinutes    = d.intOrDefault(key: .lastPrivateModeDurationMinutes, default: 0)
+        privateModeEndEpoch               = d.double(forKey: Key.privateModeEndEpoch.rawValue)
         ocrEnabled                = d.boolOrDefault(key: .ocrEnabled, default: true)
         stripImageMetadata        = d.bool(forKey: Key.stripImageMetadata.rawValue)
         imageMaxDimensionEnabled  = d.bool(forKey: Key.imageMaxDimensionEnabled.rawValue)
@@ -71,6 +77,7 @@ final class AppSettings: ObservableObject {
         case historyCountLimit, historySizeLimitEnabled, historySizeLimitMB
         case historyAgeLimitEnabled, historyAgeLimitDays
         case autoPasteEnabled, isPrivateModeEnabled, lastPrivateModeDurationMinutes
+        case privateModeEndEpoch
         case ocrEnabled, stripImageMetadata
         case imageMaxDimensionEnabled, imageMaxDimension
         case imageSizeLimitEnabled, imageSizeLimitMB

@@ -1,0 +1,44 @@
+App Store Description — cpMan 2.0
+=================================
+Paste the text BELOW the line into App Store Connect -> App Information / Version -> Description.
+(Everything above the line is a note for you and should NOT be pasted.)
+
+The Description field accepts the bullet (•) and key symbols (^⌥V, ⌘C, ⌘V, ⌘Tab),
+which the live 1.0 description already uses. Keep them for readability.
+
+----------------------------- COPY FROM HERE -----------------------------
+A menu-bar clipboard manager. Press the cpMan hotkey to bring back anything you recently copied — text or images. No accounts, no network, no telemetry. Your clipboard stays on your Mac.
+
+cpMan is a fast clipboard history for macOS. It lives in your menu bar, remembers what you copy — text and images — and brings any of it back with a single keystroke. It is built to be private and to stay out of your way.
+
+Press ^⌥V (or your own shortcut) and a small picker opens right where you're working. Type to filter, press Return to paste the selected item into the app you're using. That's the core of it.
+
+WHAT IT DOES
+• Captures both text and images you copy, including screenshots.
+• On-device OCR reads the text inside images, so you can search your image history by its contents.
+• Opens a fast floating picker from anywhere via a global hotkey.
+• Filter the list as you type. Press Return to paste, Space to preview a long clip, and ⌘1–⌘9 to grab one of the top items instantly.
+• Auto-paste (optional): selecting an item pastes it straight into your active app, with no manual ⌘V. Toggle it in Settings.
+• Pin the items you use most so they stay at the top and are never pruned.
+• Private Mode: pause recording for 15 minutes, 1 hour, or until you turn it back on — straight from the menu bar.
+• Ignore list: choose apps that should never be recorded, such as password managers.
+• History limits: keep history by count, age, or total size — your choice in Settings.
+• Delete any item from the list with a single keystroke.
+
+PRIVACY AND PERMISSIONS
+• No accounts, no sign-in, no subscription.
+• No network access of any kind. OCR runs entirely on your Mac using Apple's Vision framework. Nothing ever leaves your device.
+• No analytics, no telemetry, no crash reporters.
+• Accessibility is used ONLY if you turn on Auto-paste, and ONLY to send a single ⌘V into your active app after you pick an item. cpMan never logs or monitors keystrokes from other apps, and it respects Secure Event Input — it pauses while a password field is focused. Leave Auto-paste off and cpMan asks for no permissions at all.
+• Your clipboard history (text and images) is stored on-device in the app's sandbox container.
+
+DESIGNED TO STAY OUT OF YOUR WAY
+cpMan does not show a Dock icon and does not appear in ⌘Tab. The menu-bar icon and the floating picker are the entire interface. If you don't press the shortcut, you'll never see it.
+
+REQUIREMENTS
+• macOS 14 (Sonoma) or later.
+• Apple silicon or Intel.
+
+THE NAME
+"cpMan" is short for "copy manager" — small enough to fit in your muscle memory next to ⌘C and ⌘V.
+----------------------------- COPY TO HERE -----------------------------
